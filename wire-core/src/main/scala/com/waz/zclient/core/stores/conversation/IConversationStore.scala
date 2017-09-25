@@ -26,7 +26,7 @@ import com.waz.api.SyncState
 import com.waz.api.User
 import com.waz.zclient.core.stores.IStore
 
-import collection.JavaConverters._
+
 
 trait IConversationStore extends IStore {
 
@@ -43,15 +43,6 @@ trait IConversationStore extends IStore {
    * @param conversationStoreObserver
    */
   def removeConversationStoreObserver(conversationStoreObserver: ConversationStoreObserver): Unit
-
-  def mute(): Unit
-
-  /**
-   * mute conversation
-   * @param conversation
-   * @param mute
-   */
-  def mute(conversation: IConversation, mute: Boolean): Unit
 
   /**
    * archive conversation
@@ -101,15 +92,11 @@ trait IConversationStore extends IStore {
    * otherwise the conversation above
    */
   def getNextConversation(): IConversation = nextConversation.getOrElse(null) // for Java
-  def nextConversation: Option[IConversation] // for Scala
+  protected def nextConversation: Option[IConversation] // for Scala
 
   def getConversation(conversationId: String): IConversation
 
   def sendMessage(message: String): Unit
-
-  def sendMessage(conversation: Option[IConversation], message: String): Unit
-
-  def sendMessage(jpegData: Array[Byte]): Unit
 
   def sendMessage(imageAsset: ImageAsset): Unit
 
@@ -117,20 +104,9 @@ trait IConversationStore extends IStore {
 
   def sendMessage(assetForUpload: AssetForUpload, errorHandler: MessageContent.Asset.ErrorHandler): Unit
 
-  def sendMessage(conversation: Option[IConversation], assetForUpload: AssetForUpload, errorHandler: MessageContent.Asset.ErrorHandler): Unit
-
-  def sendMessage(conversation: Option[IConversation], imageAsset: ImageAsset): Unit // for Scala
-  def sendMessage(conversation: IConversation, imageAsset: ImageAsset): Unit = sendMessage(Option(conversation), imageAsset) // for Java
-
   def sendMessage(audioAssetForUpload: AudioAssetForUpload, errorHandler: MessageContent.Asset.ErrorHandler): Unit
 
-  def sendMessage(conversation: Option[IConversation], audioAssetForUpload: AudioAssetForUpload, errorHandler: MessageContent.Asset.ErrorHandler): Unit
-
-  def knockCurrentConversation(): Unit
-
-  def createGroupConversation(users: Seq[User], conversationChangerSender: ConversationChangeRequester): Unit
-  def createGroupConversation(users: java.lang.Iterable[_ <: User], conversationChangerSender: ConversationChangeRequester): Unit =
-    createGroupConversation(users.asScala.toSeq, conversationChangerSender)
+  def createGroupConversation(users: java.lang.Iterable[_ <: User], conversationChangerSender: ConversationChangeRequester): Unit
 
   def loadCurrentConversation(onConversationLoadedListener: OnConversationLoadedListener): Unit
 

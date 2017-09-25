@@ -43,7 +43,7 @@ import com.waz.zclient.controllers.location.ILocationController
 import com.waz.zclient.controllers.navigation.INavigationController
 import com.waz.zclient.controllers.singleimage.ISingleImageController
 import com.waz.zclient.controllers.userpreferences.IUserPreferencesController
-import com.waz.zclient.conversation.CollectionController
+import com.waz.zclient.conversation.{CollectionController, ConversationController}
 import com.waz.zclient.conversationlist.ConversationListController
 import com.waz.zclient.core.stores.IStoreFactory
 import com.waz.zclient.core.stores.network.INetworkStore
@@ -115,8 +115,8 @@ object WireApplication {
     bind [PreferencesController]           to new PreferencesController()
     bind [ImageController]                 to new ImageController()
     bind [UserAccountsController]          to new UserAccountsController()
-    bind [SharingController]         to new SharingController()
-
+    bind [SharingController]               to new SharingController()
+    bind [ConversationController]          to new ConversationController()
 
     // current conversation data
     bind [Signal[ConversationData]] to {

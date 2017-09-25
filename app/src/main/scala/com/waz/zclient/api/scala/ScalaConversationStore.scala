@@ -60,7 +60,6 @@ class ScalaConversationStore(zMessagingApi: ZMessagingApi, selectionController: 
   conversationsList.addUpdateListener(conversationListUpdateListener)
   conversationListUpdateListener.updated()
 
-
   override def tearDown(): Unit = {
     syncIndicator.removeUpdateListener(syncStateUpdateListener)
     conversationsList.removeUpdateListener(conversationListUpdateListener)
@@ -101,19 +100,17 @@ class ScalaConversationStore(zMessagingApi: ZMessagingApi, selectionController: 
 
   override def setCurrentConversationToNext(requester: ConversationChangeRequester): Unit = setCurrentConversation(nextConversation, requester)
 
-  override def nextConversation: Option[IConversation] = if (conversationsList.size() == 0) None else
+  protected override def nextConversation: Option[IConversation] = if (conversationsList.size() == 0) None else
     (0 until conversationsList.size()).find(i => currentConversation.contains(conversationsList.get(i))).flatMap { i =>
       Some(if (i == conversationsList.size() - 1) conversationsList.get(i - 1) else conversationsList.get(i + 1))
     }
 
-  override def loadMenuConversation(conversationId: String): Unit = {
-    menuConversation = Option(conversationsList.getConversation(conversationId))
-    menuConversation.foreach { conv =>
+  override def loadMenuConversation(conversationId: String): Unit =
+    Option(conversationsList.getConversation(conversationId)).foreach { conv =>
       conv.removeUpdateListener(menuConversationUpdateListener)
       conv.addUpdateListener(menuConversationUpdateListener)
       menuConversationUpdateListener.updated()
     }
-  }
 
   override def numberOfActiveConversations: Int = if (establishedConversationsList == null) 0 else establishedConversationsList.size
 
@@ -139,7 +136,12 @@ class ScalaConversationStore(zMessagingApi: ZMessagingApi, selectionController: 
     conversationStoreObservers = conversationStoreObservers - conversationStoreObserver
   }
 
-  override def createGroupConversation(users: Seq[User], conversationChangerSender: ConversationChangeRequester): Unit = {
+  import collection.JavaConverters._
+
+  override def createGroupConversation(users: java.lang.Iterable[_ <: User], conversationChangerSender: ConversationChangeRequester): Unit =
+    createGroupConversation(users.asScala.toSeq, conversationChangerSender)
+
+  private def createGroupConversation(users: Seq[User], conversationChangerSender: ConversationChangeRequester): Unit = {
     conversationsList.createGroupConversation(users, new ConversationsList.ConversationCallback() {
       override def onConversationsFound(iterable: java.lang.Iterable[IConversation]): Unit = {
         val iterator = iterable.iterator()
@@ -154,50 +156,29 @@ class ScalaConversationStore(zMessagingApi: ZMessagingApi, selectionController: 
     })
   }
 
-  override def sendMessage(message: String): Unit = sendMessage(currentConversation, message)
-
-  override def sendMessage(conversation: Option[IConversation], message: String): Unit = conversation.foreach {
+  override def sendMessage(message: String): Unit = currentConversation.foreach {
     _.sendMessage(new MessageContent.Text(message))
   }
 
-  override def sendMessage(jpegData: Array[Byte]): Unit = currentConversation.foreach {
-    _.sendMessage(new MessageContent.Image(ImageAssetFactory.getImageAsset(jpegData)))
+  override def sendMessage(imageAsset: ImageAsset): Unit = currentConversation.foreach {
+    _.sendMessage(new MessageContent.Image(imageAsset))
   }
-
-  override def sendMessage(imageAsset: ImageAsset): Unit = sendMessage(currentConversation, imageAsset)
 
   override def sendMessage(location: MessageContent.Location): Unit = currentConversation.foreach {
     _.sendMessage(location)
   }
 
   override def sendMessage(assetForUpload: AssetForUpload, errorHandler: MessageContent.Asset.ErrorHandler): Unit =
-    sendMessage(currentConversation, assetForUpload, errorHandler)
-
-  override def sendMessage(conversation: Option[IConversation], assetForUpload: AssetForUpload, errorHandler: MessageContent.Asset.ErrorHandler): Unit =
-    conversation.foreach { conv =>
+    currentConversation.foreach { conv =>
       info(s"Send file to ${conv.getName}")
       conv.sendMessage(new MessageContent.Asset(assetForUpload, errorHandler))
     }
 
-  override def sendMessage(conversation: Option[IConversation], imageAsset: ImageAsset): Unit = conversation.foreach {
-    _.sendMessage(new MessageContent.Image(imageAsset))
-  }
-
   override def sendMessage(audioAssetForUpload: AudioAssetForUpload, errorHandler: MessageContent.Asset.ErrorHandler): Unit =
-    sendMessage(currentConversation, audioAssetForUpload, errorHandler)
-
-  override def sendMessage(conversation: Option[IConversation],
-                           audioAssetForUpload: AudioAssetForUpload,
-                           errorHandler: MessageContent.Asset.ErrorHandler): Unit = conversation.foreach { conv =>
-    info(s"Send audio file to ${conv.getName}")
-    conv.sendMessage(new MessageContent.Asset(audioAssetForUpload, errorHandler))
-  }
-
-  override def knockCurrentConversation() = currentConversation.foreach( _.knock() )
-
-  override def mute(): Unit = currentConversation.foreach(conv => mute(conv, !conv.isMuted))
-
-  override def mute(conversation: IConversation, mute: Boolean): Unit = conversation.setMuted(mute)
+    currentConversation.foreach { conv =>
+      info(s"Send audio file to ${conv.getName}")
+      conv.sendMessage(new MessageContent.Asset(audioAssetForUpload, errorHandler))
+    }
 
   override def archive(conversation: IConversation, archive: Boolean): Unit = if (conversation.isSelected) {
     nextConversation.foreach { conv =>

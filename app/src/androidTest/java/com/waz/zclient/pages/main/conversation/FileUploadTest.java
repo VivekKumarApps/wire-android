@@ -31,6 +31,7 @@ import com.waz.api.IConversation;
 import com.waz.api.MessageContent;
 import com.waz.zclient.MainTestActivity;
 import com.waz.zclient.R;
+import com.waz.zclient.conversation.ConversationFragment;
 import com.waz.zclient.core.stores.conversation.IConversationStore;
 import com.waz.zclient.core.stores.inappnotification.IInAppNotificationStore;
 import com.waz.zclient.core.stores.inappnotification.SyncErrorObserver;

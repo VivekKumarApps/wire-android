@@ -91,6 +91,7 @@ import com.waz.zclient.controllers.orientation.OrientationControllerObserver;
 import com.waz.zclient.controllers.permission.RequestPermissionsObserver;
 import com.waz.zclient.controllers.singleimage.SingleImageObserver;
 import com.waz.zclient.conversation.CollectionController;
+import com.waz.zclient.conversation.ConversationController;
 import com.waz.zclient.core.api.scala.ModelObserver;
 import com.waz.zclient.core.controllers.tracking.attributes.OpenedMediaAction;
 import com.waz.zclient.core.controllers.tracking.events.filetransfer.SelectedTooLargeFileEvent;
@@ -126,7 +127,6 @@ import com.waz.zclient.ui.animation.interpolators.penner.Expo;
 import com.waz.zclient.ui.audiomessage.AudioMessageRecordingView;
 import com.waz.zclient.ui.cursor.CursorMenuItem;
 import com.waz.zclient.ui.utils.KeyboardUtils;
-import com.waz.zclient.ui.views.e2ee.ShieldView;
 import com.waz.zclient.utils.AssetUtils;
 import com.waz.zclient.utils.Callback;
 import com.waz.zclient.utils.LayoutSpec;
@@ -154,7 +154,7 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
                                                                                                   GiphyObserver,
                                                                                                   OnBackPressedListener,
                                                                                                   CursorCallback,
-                                                                                                  AudioMessageRecordingView.Callback,
+                                                                                                     AudioMessageRecordingView.Callback,
                                                                                                   RequestPermissionsObserver,
                                                                                                   ImagePreviewLayout.Callback,
                                                                                                   AssetIntentsManager.Callback,
@@ -188,10 +188,7 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
     private FrameLayout invisibleFooter;
 
     private IConversation.Type toConversationType;
-    private Toolbar toolbar;
     private ActionMenuView leftMenu;
-    private TextView toolbarTitle;
-    private ShieldView shieldView;
     private CursorView cursorView;
     private AudioMessageRecordingView audioMessageRecordingView;
     private ExtendedCursorContainer extendedCursorContainer;
@@ -207,42 +204,6 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
     public static ConversationFragment newInstance() {
         return new ConversationFragment();
     }
-
-    private final ModelObserver<IConversation> conversationModelObserver = new ModelObserver<IConversation>() {
-        @Override
-        public void updated(IConversation model) {
-            if (toolbar == null ||
-                toolbarTitle == null ||
-                shieldView == null) {
-                return;
-            }
-
-            shieldView.setVisibility(model.getVerified() == Verification.VERIFIED ? View.VISIBLE : View.GONE);
-
-            toolbarTitle.setText(model.getName());
-
-            if (!model.isMemberOfConversation()) {
-                return;
-            }
-
-            inflateCollectionIcon();
-
-            inject(UserAccountsController.class).setIsGroupListener(new ConvId(model.getId()), new Callback<Boolean>() {
-                @Override
-                public void callback(Boolean isGroup) {
-                    if (toolbar == null) {
-                        return;
-                    }
-                    toolbar.getMenu().clear();
-                    if (!isGroup) {
-                        toolbar.inflateMenu(R.menu.conversation_header_menu_video);
-                    } else {
-                        toolbar.inflateMenu(R.menu.conversation_header_menu_audio);
-                    }
-                }
-            });
-        }
-    };
 
     @Override
     public void onOrientationHasChanged(SquareOrientation squareOrientation) {
@@ -404,27 +365,37 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
         assetIntentsManager = new AssetIntentsManager(getActivity(), this, savedInstanceState);
     }
 
-    @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup viewGroup, Bundle savedInstanceState) {
-        View view = inflater.inflate(R.layout.fragment_conversation, viewGroup, false);
+    private Toolbar setToolbar(View view) {
+        final ConversationController convController = inject(ConversationController.class);
 
-        extendedCursorContainer = ViewUtils.getView(view, R.id.ecc__conversation);
-        containerPreview = ViewUtils.getView(view, R.id.fl__conversation_overlay);
-        cursorView = ViewUtils.getView(view, R.id.cv__cursor);
-        audioMessageRecordingView = ViewUtils.getView(view, R.id.amrv_audio_message_recording);
-        toolbar = ViewUtils.getView(view, R.id.t_conversation_toolbar);
-        leftMenu = ViewUtils.getView(view, R.id.conversation_left_menu);
-        toolbarTitle = ViewUtils.getView(toolbar, R.id.tv__conversation_toolbar__title);
-        shieldView = ViewUtils.getView(view, R.id.sv__conversation_toolbar__verified_shield);
-        shieldView.setVisibility(View.GONE);
-        typingIndicatorView = ViewUtils.getView(view, R.id.tiv_typing_indicator_view);
-        listView = ViewUtils.getView(view, R.id.messages_list_view);
+        final Toolbar toolbar = ViewUtils.getView(view, R.id.t_conversation_toolbar);
+
+        convController.onSelectedConversationIsActive(new Callback<Boolean>() {
+            @Override
+            public void callback(Boolean isActive) {
+                if (isActive) {
+                    inflateCollectionIcon();
+                    convController.onSelectedConversationIsGroup(new Callback<Boolean>() {
+                        @Override
+                        public void callback(Boolean isGroup) {
+                            if (toolbar != null) {
+                                toolbar.getMenu().clear();
+                                if (!isGroup) toolbar.inflateMenu(R.menu.conversation_header_menu_video);
+                                else toolbar.inflateMenu(R.menu.conversation_header_menu_audio);
+                            }
+                        }
+                    });
+                }
+            }
+        });
+
         toolbar.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 getControllerFactory().getConversationScreenController().showParticipants(toolbar, false);
             }
         });
+
         toolbar.setOnMenuItemClickListener(new Toolbar.OnMenuItemClickListener() {
             @Override
             public boolean onMenuItemClick(MenuItem item) {
@@ -441,6 +412,7 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
                 return false;
             }
         });
+
         toolbar.setNavigationOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -454,6 +426,44 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
             }
         });
 
+        if (LayoutSpec.isTablet(getContext()) && ViewUtils.isInLandscape(getContext())) {
+            toolbar.setNavigationIcon(null);
+        }
+
+        return toolbar;
+    }
+
+    @Override
+    public View onCreateView(LayoutInflater inflater, ViewGroup viewGroup, Bundle savedInstanceState) {
+        View view = inflater.inflate(R.layout.fragment_conversation, viewGroup, false);
+
+        final ConversationController convController = inject(ConversationController.class);
+
+        extendedCursorContainer = ViewUtils.getView(view, R.id.ecc__conversation);
+        containerPreview = ViewUtils.getView(view, R.id.fl__conversation_overlay);
+        cursorView = ViewUtils.getView(view, R.id.cv__cursor);
+        audioMessageRecordingView = ViewUtils.getView(view, R.id.amrv_audio_message_recording);
+
+        final Toolbar toolbar = setToolbar(view);
+
+        leftMenu = ViewUtils.getView(view, R.id.conversation_left_menu);
+
+        final TextView toolbarTitle = ViewUtils.getView(toolbar, R.id.tv__conversation_toolbar__title);
+
+        convController.onSelectedConversationName(new Callback<String>(){
+            @Override
+            public void callback(String name) {
+                if (toolbarTitle != null) toolbarTitle.setText(name);
+            }
+        });
+
+        ViewUtils.getView(view, R.id.sv__conversation_toolbar__verified_shield);
+
+        typingIndicatorView = ViewUtils.getView(view, R.id.tiv_typing_indicator_view);
+        listView = ViewUtils.getView(view, R.id.messages_list_view);
+
+
+
         leftMenu.setOnMenuItemClickListener(new ActionMenuView.OnMenuItemClickListener() {
             @Override
             public boolean onMenuItemClick(MenuItem item) {
@@ -466,9 +476,6 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
             }
         });
 
-        if (LayoutSpec.isTablet(getContext()) && ViewUtils.isInLandscape(getContext())) {
-            toolbar.setNavigationIcon(null);
-        }
 
         conversationLoadingIndicatorViewView = ViewUtils.getView(view, R.id.lbv__conversation__loading_indicator);
 
@@ -533,7 +540,7 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
     public void onResume() {
         super.onResume();
         if (LayoutSpec.isTablet(getContext())) {
-            conversationModelObserver.setAndUpdate(getStoreFactory().conversationStore().getCurrentConversation());
+            //conversationModelObserver.setAndUpdate(getStoreFactory().conversationStore().getCurrentConversation());
         }
     }
 
@@ -594,9 +601,8 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
         typingIndicatorView.clear();
         typingIndicatorView = null;
         typingListener = null;
-        conversationModelObserver.clear();
-        toolbarTitle = null;
-        toolbar = null;
+        //toolbarTitle = null;
+        //toolbar = null;
         selfModelObserver.clear();
         super.onDestroyView();
     }
@@ -642,7 +648,7 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
         }
 
         if (LayoutSpec.isPhone(getContext())) {
-            conversationModelObserver.setAndUpdate(toConversation);
+            //conversationModelObserver.setAndUpdate(toConversation);
         }
 
         if (isPreviewShown && fromConversation != null && !toConversation.getId().equals(fromConversation.getId())) {
@@ -802,9 +808,9 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
         if (conversation == null || getStoreFactory() == null || getStoreFactory().isTornDown()) {
             return;
         }
-        if (!LayoutSpec.isTablet(getActivity())) {
-            toolbarTitle.setText(conversation.getName());
-        }
+        //if (!LayoutSpec.isTablet(getActivity())) {
+        //    toolbarTitle.setText(conversation.getName());
+        //}
         if (cursorView == null) {
             return;
         }
