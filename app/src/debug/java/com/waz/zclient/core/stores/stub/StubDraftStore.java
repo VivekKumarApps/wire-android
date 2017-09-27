@@ -17,14 +17,14 @@
  */
 package com.waz.zclient.core.stores.stub;
 
-import com.waz.api.IConversation;
+import com.waz.model.ConvId;
 import com.waz.zclient.core.stores.draft.IDraftStore;
 import java.lang.Override;
 import java.lang.String;
 
 public class StubDraftStore implements IDraftStore {
   @Override
-  public String getDraft(IConversation conversation) {
+  public String getDraft(ConvId id) {
     return null;
   }
 
@@ -34,7 +34,7 @@ public class StubDraftStore implements IDraftStore {
   }
 
   @Override
-  public void setDraft(IConversation conversation, String text) {
+  public void setDraft(ConvId id, String text) {
 
   }
 }

@@ -263,7 +263,7 @@ class CursorView(val context: Context, val attrs: AttributeSet, val defStyleAttr
 
   def getText: String = cursorEditText.getText.toString
 
-  def setConversation(conversation: IConversation): Unit = {
+  def setConversation(): Unit = {
     enableMessageWriting()
     controller.editingMsg ! None
     controller.secondaryToolbarVisible ! false

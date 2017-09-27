@@ -17,7 +17,7 @@
  */
 package com.waz.zclient.core.api.scala;
 
-import com.waz.api.IConversation;
+import com.waz.model.ConvId;
 import com.waz.zclient.core.stores.draft.DraftStore;
 
 import java.util.HashMap;
@@ -26,26 +26,24 @@ import java.util.Map;
 public class ScalaDraftStore extends DraftStore {
     public static final String TAG = ScalaDraftStore.class.getName();
 
-    Map<String, String> draftMap = new HashMap<>();
+    Map<ConvId, String> draftMap = new HashMap<>();
 
     public ScalaDraftStore() {
 
     }
 
     @Override
-    public void setDraft(IConversation conversation, String text) {
-        if (conversation == null) {
-            return;
-        }
-        draftMap.put(conversation.getId(), text);
+    public void setDraft(ConvId id, String text) {
+        if (id == null) return;
+        draftMap.put(id, text);
     }
 
     @Override
-    public String getDraft(IConversation conversation) {
+    public String getDraft(ConvId id) {
 
-        if (conversation != null &&
-            draftMap.containsKey(conversation.getId())) {
-            return draftMap.get(conversation.getId());
+        if (id != null &&
+            draftMap.containsKey(id)) {
+            return draftMap.get(id);
         }
         return "";
     }

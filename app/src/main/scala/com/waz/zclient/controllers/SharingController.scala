@@ -129,9 +129,9 @@ class SharingController(implicit injector: Injector, wContext: WireContext, even
     ephemeralExpiration.publish(EphemeralExpiration.NONE, dispatcher)
   }
 
-  def clearSharingFor(conv: IConversation) = if (conv != null) {
+  def clearSharingFor(convId: ConvId) = if (convId != null) {
     targetConvs.currentValue.foreach { convs =>
-      if (convs.contains(ConvId(conv.getId))) resetContent()
+      if (convs.contains(convId)) resetContent()
     }
   }
 

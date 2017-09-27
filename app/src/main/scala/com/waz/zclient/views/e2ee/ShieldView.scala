@@ -39,7 +39,7 @@ class ShieldView(context: Context, attrs: AttributeSet, defStyleAttr: Int) exten
   setImageResource(if (verified) R.drawable.shield_full else R.drawable.shield_half)
 
   // TODO: check and migrate the way the visibility is set in ParticipantHeaderFragment and SingleParticipantFragment
-  inject[ConversationController].selectedConversationVerified.on(Threading.Ui) {
+  inject[ConversationController].selectedConvIsVerified.on(Threading.Ui) {
     case true  => setVisibility(View.VISIBLE)
     case false => setVisibility(View.GONE)
   }

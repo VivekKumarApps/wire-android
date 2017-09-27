@@ -23,7 +23,6 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.provider.MediaStore;
-import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
@@ -47,24 +46,22 @@ import com.waz.api.AssetFactory;
 import com.waz.api.AssetForUpload;
 import com.waz.api.AudioAssetForUpload;
 import com.waz.api.AudioEffect;
-import com.waz.api.ConversationsList;
 import com.waz.api.EphemeralExpiration;
 import com.waz.api.ErrorsList;
 import com.waz.api.IConversation;
 import com.waz.api.ImageAsset;
 import com.waz.api.ImageAssetFactory;
-import com.waz.api.InputStateIndicator;
 import com.waz.api.Message;
 import com.waz.api.MessageContent;
 import com.waz.api.NetworkMode;
 import com.waz.api.OtrClient;
 import com.waz.api.Self;
-import com.waz.api.SyncState;
 import com.waz.api.UpdateListener;
 import com.waz.api.User;
 import com.waz.api.UsersList;
 import com.waz.api.Verification;
 import com.waz.model.ConvId;
+import com.waz.model.ConversationData;
 import com.waz.model.MessageData;
 import com.waz.utils.wrappers.URI;
 import com.waz.zclient.BaseActivity;
@@ -74,7 +71,6 @@ import com.waz.zclient.camera.controllers.GlobalCameraController;
 import com.waz.zclient.controllers.IControllerFactory;
 import com.waz.zclient.controllers.SharingController;
 import com.waz.zclient.controllers.ThemeController;
-import com.waz.zclient.controllers.UserAccountsController;
 import com.waz.zclient.controllers.accentcolor.AccentColorObserver;
 import com.waz.zclient.controllers.confirmation.ConfirmationCallback;
 import com.waz.zclient.controllers.confirmation.ConfirmationRequest;
@@ -102,8 +98,6 @@ import com.waz.zclient.core.controllers.tracking.events.media.SentPictureEvent;
 import com.waz.zclient.core.controllers.tracking.events.media.SentVideoMessageEvent;
 import com.waz.zclient.core.controllers.tracking.events.media.StartedRecordingAudioMessageEvent;
 import com.waz.zclient.core.stores.IStoreFactory;
-import com.waz.zclient.core.stores.conversation.ConversationChangeRequester;
-import com.waz.zclient.core.stores.conversation.ConversationStoreObserver;
 import com.waz.zclient.core.stores.inappnotification.SyncErrorObserver;
 import com.waz.zclient.core.stores.participants.ParticipantsStoreObserver;
 import com.waz.zclient.cursor.CursorCallback;
@@ -117,7 +111,7 @@ import com.waz.zclient.pages.extendedcursor.ephemeral.EphemeralLayout;
 import com.waz.zclient.pages.extendedcursor.image.CursorImagesLayout;
 import com.waz.zclient.pages.extendedcursor.image.ImagePreviewLayout;
 import com.waz.zclient.pages.extendedcursor.voicefilter.VoiceFilterLayout;
-import com.waz.zclient.pages.main.conversation.views.TypingIndicatorView;
+import com.waz.zclient.views.TypingIndicatorView;
 import com.waz.zclient.pages.main.conversationlist.ConversationListAnimation;
 import com.waz.zclient.pages.main.conversationpager.controller.SlidingPaneObserver;
 import com.waz.zclient.pages.main.pickuser.controller.IPickUserController;
@@ -143,8 +137,7 @@ import java.util.Map;
 
 import static com.waz.zclient.Intents.ShowDevicesIntent;
 
-public class ConversationFragment extends BaseFragment<ConversationFragment.Container> implements ConversationStoreObserver,
-                                                                                                  KeyboardVisibilityObserver,
+public class ConversationFragment extends BaseFragment<ConversationFragment.Container> implements KeyboardVisibilityObserver,
                                                                                                   AccentColorObserver,
                                                                                                   ParticipantsStoreObserver,
                                                                                                   SyncErrorObserver,
@@ -179,8 +172,8 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
     private static final int AUDIO_PERMISSION_REQUEST_ID = 864;
     private static final int AUDIO_FILTER_PERMISSION_REQUEST_ID = 865;
 
-    private InputStateIndicator inputStateIndicator;
-    private UpdateListener typingListener;
+    //private InputStateIndicator inputStateIndicator;
+    //private UpdateListener typingListener;
 
     private TypingIndicatorView typingIndicatorView;
     private LoadingIndicatorView conversationLoadingIndicatorViewView;
@@ -375,7 +368,7 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
             public void callback(Boolean isActive) {
                 if (isActive) {
                     inflateCollectionIcon();
-                    convController.onSelectedConversationIsGroup(new Callback<Boolean>() {
+                    convController.onSelectedConvIsGroup(new Callback<Boolean>() {
                         @Override
                         public void callback(Boolean isGroup) {
                             if (toolbar != null) {
@@ -450,7 +443,9 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
 
         final TextView toolbarTitle = ViewUtils.getView(toolbar, R.id.tv__conversation_toolbar__title);
 
-        convController.onSelectedConversationName(new Callback<String>(){
+        initConvController(convController);
+
+        convController.onSelectedConvName(new Callback<String>(){
             @Override
             public void callback(String name) {
                 if (toolbarTitle != null) toolbarTitle.setText(name);
@@ -461,8 +456,6 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
 
         typingIndicatorView = ViewUtils.getView(view, R.id.tiv_typing_indicator_view);
         listView = ViewUtils.getView(view, R.id.messages_list_view);
-
-
 
         leftMenu.setOnMenuItemClickListener(new ActionMenuView.OnMenuItemClickListener() {
             @Override
@@ -509,18 +502,21 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
         getControllerFactory().getRequestPermissionsController().addObserver(this);
         getControllerFactory().getOrientationController().addOrientationControllerObserver(this);
         cursorView.setCallback(this);
-        final String draftText = getStoreFactory().draftStore().getDraft(getStoreFactory().conversationStore().getCurrentConversation());
+
+        final ConversationController convController = inject(ConversationController.class);
+        final String draftText = getStoreFactory().draftStore().getDraft(convController.getSelectedConvId());
+
         if (!TextUtils.isEmpty(draftText)) {
             cursorView.setText(draftText);
         }
 
         audioMessageRecordingView.setDarkTheme(((BaseActivity) getActivity()).injectJava(ThemeController.class).isDarkTheme());
 
-        if (!getControllerFactory().getConversationScreenController().isConversationStreamUiInitialized()) {
+        /*if (!getControllerFactory().getConversationScreenController().isConversationStreamUiInitialized()) {
             getStoreFactory().conversationStore().addConversationStoreObserverAndUpdate(this);
         } else {
-            getStoreFactory().conversationStore().addConversationStoreObserver(this);
-        }
+            getStoreFactory().conversationStore(). addConversationStoreObserver(this);
+        }*/
         getControllerFactory().getNavigationController().addNavigationControllerObserver(this);
         getControllerFactory().getNavigationController().addPagerControllerObserver(this);
 
@@ -539,9 +535,9 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
     @Override
     public void onResume() {
         super.onResume();
-        if (LayoutSpec.isTablet(getContext())) {
+       // if (LayoutSpec.isTablet(getContext())) {
             //conversationModelObserver.setAndUpdate(getStoreFactory().conversationStore().getCurrentConversation());
-        }
+       // }
     }
 
     @Override
@@ -570,15 +566,15 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
         getControllerFactory().getSingleImageController().removeSingleImageObserver(this);
 
         if (!cursorView.isEditingMessage()) {
-            getStoreFactory().draftStore().setDraft(getStoreFactory().conversationStore().getCurrentConversation(),
-                                                       cursorView.getText().trim());
+            final ConversationController convController = inject(ConversationController.class);
+            getStoreFactory().draftStore().setDraft(convController.getSelectedConvId(), cursorView.getText().trim());
         }
         getStoreFactory().inAppNotificationStore().removeInAppNotificationObserver(this);
         getStoreFactory().participantsStore().removeParticipantsStoreObserver(this);
         getControllerFactory().getGlobalLayoutController().removeKeyboardVisibilityObserver(this);
         getControllerFactory().getNavigationController().removePagerControllerObserver(this);
 
-        getStoreFactory().conversationStore().removeConversationStoreObserver(this);
+        //getStoreFactory().conversationStore().removeConversationStoreObserver(this);
         getControllerFactory().getAccentColorController().removeAccentColorObserver(this);
         getControllerFactory().getNavigationController().removeNavigationControllerObserver(this);
         getControllerFactory().getSlidingPaneController().removeObserver(this);
@@ -594,13 +590,13 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
         containerPreview = null;
         cursorView = null;
         conversationLoadingIndicatorViewView = null;
-        if (inputStateIndicator != null) {
-            inputStateIndicator.removeUpdateListener(typingListener);
-            inputStateIndicator = null;
-        }
+//        if (inputStateIndicator != null) {
+//            inputStateIndicator.removeUpdateListener(typingListener);
+//            inputStateIndicator = null;
+//        }
         typingIndicatorView.clear();
         typingIndicatorView = null;
-        typingListener = null;
+        //typingListener = null;
         //toolbarTitle = null;
         //toolbar = null;
         selfModelObserver.clear();
@@ -633,140 +629,113 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
     //
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    @Override
-    public void onConversationListUpdated(@NonNull ConversationsList conversationsList) {
-
-    }
-
-    @Override
-    public void onCurrentConversationHasChanged(final IConversation fromConversation,
-                                                final IConversation toConversation,
-                                                final ConversationChangeRequester conversationChangeRequester) {
-
-        if (toConversation == null) {
-            return;
-        }
-
-        if (LayoutSpec.isPhone(getContext())) {
-            //conversationModelObserver.setAndUpdate(toConversation);
-        }
-
-        if (isPreviewShown && fromConversation != null && !toConversation.getId().equals(fromConversation.getId())) {
-            onCancelPreview();
-        }
-
-        extendedCursorContainer.close(true);
-
-        getControllerFactory().getConversationScreenController().setSingleConversation(toConversation.getType() == IConversation.Type.ONE_TO_ONE);
-
-        int duration = getResources().getInteger(R.integer.framework_animation_duration_short);
-        // post to give the RootFragment the chance to drive its animations first
-        new Handler().postDelayed(new Runnable() {
+    private void initConvController(final ConversationController controller) {
+        controller.onConvChanged(new Callback<ConversationController.ConversationChange>() {
             @Override
-            public void run() {
-                if (cursorView == null) {
-                    return;
-                }
+            public void callback(final ConversationController.ConversationChange conversationChange) {
+                final ConvId toConversation = conversationChange.toConversation();
+                if (toConversation == null) return;
 
-                final boolean changeToDifferentConversation = fromConversation == null ||
-                                                              !fromConversation.getId().equals(toConversation.getId());
+                final ConvId fromConversation = conversationChange.fromConversation();
+
+                if (isPreviewShown && fromConversation != null && toConversation != fromConversation) onCancelPreview();
+
+                extendedCursorContainer.close(true);
+
+                controller.onConvLoaded(toConversation, new Callback<ConversationData>() {
+                    @Override
+                    public void callback(final ConversationData toConvData) {
+                        getControllerFactory().getConversationScreenController().setSingleConversation(toConvData.convType() == IConversation.Type.ONE_TO_ONE);
+
+                        int duration = getResources().getInteger(R.integer.framework_animation_duration_short);
+                        // post to give the RootFragment the chance to drive its animations first
+                        new Handler().postDelayed(new Runnable() {
+                            @Override
+                            public void run() {
+                                if (cursorView == null) return;
+
+                                final boolean changeToDifferentConversation = fromConversation == null || toConversation != fromConversation;
+
+                                // handle draft
+                                if (fromConversation != null && changeToDifferentConversation && !cursorView.isEditingMessage())
+                                    getStoreFactory().draftStore().setDraft(fromConversation, cursorView.getText().trim());
 
 
-                // handle draft
-                if (fromConversation != null && changeToDifferentConversation &&
-                    !cursorView.isEditingMessage()) {
-                    getStoreFactory().draftStore().setDraft(fromConversation, cursorView.getText().trim());
-                }
+                                if (toConvData.convType() == IConversation.Type.WAIT_FOR_CONNECTION) return;
 
-                if (toConversation.getType() == IConversation.Type.WAIT_FOR_CONNECTION) {
-                    return;
-                }
+                                KeyboardUtils.hideKeyboard(getActivity());
+                                conversationLoadingIndicatorViewView.hide();
+                                cursorView.enableMessageWriting();
 
-                KeyboardUtils.hideKeyboard(getActivity());
-                conversationLoadingIndicatorViewView.hide();
-                cursorView.enableMessageWriting();
+                                final SharingController sharingController = inject(SharingController.class);
 
-                final SharingController sharingController = inject(SharingController.class);
+                                if (changeToDifferentConversation) {
+                                    getControllerFactory().getConversationScreenController().setConversationStreamUiReady(false);
+                                    toConversationType = toConvData.convType();
+                                    sharingController.clearSharingFor(fromConversation);
 
-                if (changeToDifferentConversation) {
-                    getControllerFactory().getConversationScreenController().setConversationStreamUiReady(false);
-                    toConversationType = toConversation.getType();
-                    sharingController.clearSharingFor(fromConversation);
+                                    cursorView.setVisibility(toConvData.isActive() ? View.VISIBLE : View.GONE);
+                                    if (!inSplitPortraitMode()) resetCursor();
 
-                    cursorView.setVisibility(toConversation.isActive() ? View.VISIBLE : View.GONE);
-                    if (!inSplitPortraitMode()) {
-                        resetCursor();
+                                    final String draftText = getStoreFactory().draftStore().getDraft(toConversation);
+
+                                    if (TextUtils.isEmpty(draftText)) resetCursor();
+                                    else cursorView.setText(draftText);
+
+                                    cursorView.setConversation();
+
+                                    hideAudioMessageRecording();
+                                }
+
+                                final String sharedText = sharingController.getSharedText(toConversation.str());
+                                if (!TextUtils.isEmpty(sharedText)) {
+                                    cursorView.setText(sharedText);
+                                    cursorView.enableMessageWriting();
+                                    KeyboardUtils.showKeyboard(getActivity());
+                                    sharingController.clearSharingFor(toConversation);
+                                }
+
+//                                if (inputStateIndicator != null) inputStateIndicator.getTypingUsers().removeUpdateListener(typingListener);
+//
+//
+//                                inputStateIndicator = controller.inputStateIndicator(toConversation);
+//                                typingIndicatorView.setInputStateIndicator(inputStateIndicator);
+//
+//                                if (inputStateIndicator != null) inputStateIndicator.getTypingUsers().addUpdateListener(typingListener);
+                            }
+                        }, duration);
+
+                        // Saving factories since this fragment may be re-created before the runnable is done,
+                        // but we still want runnable to work.
+                        final IStoreFactory storeFactory = getStoreFactory();
+                        final IControllerFactory controllerFactory = getControllerFactory();
+                        // TODO: Remove when call issue is resolved with https://wearezeta.atlassian.net/browse/CM-645
+                        // And also why do we use the ConversationFragment to start a call from somewhere else....
+                        new Handler().postDelayed(new Runnable() {
+                            @Override
+                            public void run() {
+                                if (storeFactory == null || storeFactory.isTornDown() ||
+                                    controllerFactory == null || controllerFactory.isTornDown()) return;
+
+                                switch (conversationChange.requester()) {
+                                    case START_CONVERSATION_FOR_VIDEO_CALL:
+                                        controllerFactory.getCallingController().startCall(true);
+                                        break;
+                                    case START_CONVERSATION_FOR_CALL:
+                                        controllerFactory.getCallingController().startCall(false);
+                                        break;
+                                    case START_CONVERSATION_FOR_CAMERA:
+                                        controllerFactory.getCameraController().openCamera(CameraContext.MESSAGE);
+                                        break;
+                                }
+                            }
+                        }, 1000);
                     }
+                });
 
-                    final String draftText = getStoreFactory().draftStore().getDraft(toConversation);
-                    if (TextUtils.isEmpty(draftText)) {
-                        resetCursor();
-                    } else {
-                        cursorView.setText(draftText);
-                    }
-                    cursorView.setConversation(toConversation);
 
-                    hideAudioMessageRecording();
-                }
-
-                final String sharedText = sharingController.getSharedText(toConversation.getId());
-                if (!TextUtils.isEmpty(sharedText)) {
-                    cursorView.setText(sharedText);
-                    cursorView.enableMessageWriting();
-                    KeyboardUtils.showKeyboard(getActivity());
-                    sharingController.clearSharingFor(toConversation);
-                }
-
-                if (inputStateIndicator != null) {
-                    inputStateIndicator.getTypingUsers().removeUpdateListener(typingListener);
-                }
-
-                inputStateIndicator = toConversation.getInputStateIndicator();
-                typingIndicatorView.setInputStateIndicator(inputStateIndicator);
-
-                if (inputStateIndicator != null) {
-                    inputStateIndicator.getTypingUsers().addUpdateListener(typingListener);
-                }
             }
-        }, duration);
-
-        // Saving factories since this fragment may be re-created before the runnable is done,
-        // but we still want runnable to work.
-        final IStoreFactory storeFactory = getStoreFactory();
-        final IControllerFactory controllerFactory = getControllerFactory();
-        // TODO: Remove when call issue is resolved with https://wearezeta.atlassian.net/browse/CM-645
-        // And also why do we use the ConversationFragment to start a call from somewhere else....
-        new Handler().postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                if (storeFactory == null || storeFactory.isTornDown() ||
-                    controllerFactory == null || controllerFactory.isTornDown()) {
-                    return;
-                }
-
-                switch (conversationChangeRequester) {
-                    case START_CONVERSATION_FOR_VIDEO_CALL:
-                        controllerFactory.getCallingController().startCall(true);
-                        break;
-                    case START_CONVERSATION_FOR_CALL:
-                        controllerFactory.getCallingController().startCall(false);
-                        break;
-                    case START_CONVERSATION_FOR_CAMERA:
-                        controllerFactory.getCameraController().openCamera(CameraContext.MESSAGE);
-                        break;
-                }
-            }
-        }, 1000);
-    }
-
-    @Override
-    public void onConversationSyncingStateHasChanged(SyncState syncState) {
-
-    }
-
-    @Override
-    public void onMenuConversationHasChanged(IConversation fromConversation) {
-
+        });
     }
 
     @Override
@@ -1076,7 +1045,8 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
     @Override
     public void onMessageSent(MessageData msg) {
         getStoreFactory().networkStore().doIfHasInternetOrNotifyUser(null);
-        inject(SharingController.class).clearSharingFor(getStoreFactory().conversationStore().getCurrentConversation());
+        final ConversationController convController = inject(ConversationController.class);
+        inject(SharingController.class).clearSharingFor(convController.getSelectedConvId());
     }
 
     @Override
