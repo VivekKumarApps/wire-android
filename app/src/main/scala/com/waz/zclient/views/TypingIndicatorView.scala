@@ -66,6 +66,9 @@ import com.waz.zclient.conversation.ConversationController
 
 import scala.concurrent.duration._
 
+import com.waz.ZLog._
+import com.waz.ZLog.ImplicitTag._
+
 class TypingIndicatorView(val context: Context, val attrs: AttributeSet, val defStyleAttr: Int) extends FrameLayout(context, attrs, defStyleAttr) with ViewHelper {
   import Threading.Implicits.Ui
 
@@ -85,7 +88,9 @@ class TypingIndicatorView(val context: Context, val attrs: AttributeSet, val def
   (for {
     z <- zms
     convId <- convController.selectedConvId
+    _ = verbose(s"TY convId $convId")
     userIds <- z.typing.typingUsers(convId)
+    _ = verbose(s"TY userIds $userIds")
     userList <- Signal.future(z.users.getUsers(userIds))
   } yield userList) { userList =>
     update(userList)
@@ -93,10 +98,12 @@ class TypingIndicatorView(val context: Context, val attrs: AttributeSet, val def
 
   private def update(userList: Seq[UserData]): Unit = userList.toList match {
     case Nil =>
+      verbose(s"TY update for Nil")
       nameTextView.setText("")
       setVisibility(View.GONE)
       animationRunning ! false
     case users =>
+      verbose("TY update for " + users.map(_.displayName).mkString(", "))
       nameTextView.setText(users.map(_.displayName).mkString(", "))
       setVisibility(View.VISIBLE)
       animationRunning ! true
@@ -105,11 +112,14 @@ class TypingIndicatorView(val context: Context, val attrs: AttributeSet, val def
   private var animationState = false
 
   animationRunning { st =>
-    animationState = st
-    if (st) runAnimation()
+    if (animationState != st) {
+      animationState = st
+      if (st) runAnimation()
+    }
   }
 
   private def runAnimation(): Unit = if (animationState) {
+    verbose(s"TY runAnimation")
     val stepDuration = getResources.getInteger(R.integer.animation_duration_medium_rare)
     val step = dotsView.getWidth / 3
 
