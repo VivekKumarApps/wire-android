@@ -248,16 +248,19 @@ public class ConversationListManagerFragment extends BaseFragment<ConversationLi
     //  ConversationStoreObserver
     //
     //////////////////////////////////////////////////////////////////////////////////////////
+
+    private int animationType = LoadingIndicatorView.SPINNER(); // TODO: migrate to Scala and use actual LoadingIndicatorView.AnimationType
+
     @Override
     public void onConversationListUpdated(@NonNull final ConversationsList conversationsList) {
         if (!Page.CONVERSATION_LIST.equals(getControllerFactory().getNavigationController().getCurrentPage())) {
             return;
         }
         if (conversationsList.size() > 0) {
-            listLoadingIndicatorView.setType(LoadingIndicatorView.INFINITE_LOADING_BAR);
+            animationType = LoadingIndicatorView.INFINITE_LOADING_BAR();
             getControllerFactory().getNavigationController().setPagerEnabled(true);
         } else {
-            listLoadingIndicatorView.setType(LoadingIndicatorView.SPINNER);
+            animationType = LoadingIndicatorView.SPINNER();
             getControllerFactory().getNavigationController().setPagerEnabled(false);
         }
     }
@@ -302,7 +305,7 @@ public class ConversationListManagerFragment extends BaseFragment<ConversationLi
         switch (syncState) {
             case SYNCING:
             case WAITING:
-                listLoadingIndicatorView.show();
+                listLoadingIndicatorView.show(animationType);
                 return;
             case COMPLETED:
                 listLoadingIndicatorView.hide();

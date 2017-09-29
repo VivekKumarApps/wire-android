@@ -154,8 +154,6 @@ public class GiphySharingPreviewFragment extends BaseFragment<GiphySharingPrevie
 
         giphySearchHandler = new Handler();
 
-        loadingIndicator.setType(LoadingIndicatorView.INFINITE_LOADING_BAR);
-
         giphySearchEditText.addTextChangedListener(this);
         giphySearchEditText.setText(searchTerm);
 
@@ -293,7 +291,7 @@ public class GiphySharingPreviewFragment extends BaseFragment<GiphySharingPrevie
         confirmationMenu.setConfirmEnabled(false);
         previewImageAssetView.setBitmapLoadedCallback(this);
         previewImageAssetView.setImageAsset(gifAsset);
-        loadingIndicator.show();
+        loadingIndicator.show(LoadingIndicatorView.INFINITE_LOADING_BAR());
         KeyboardUtils.closeKeyboardIfShown(getActivity());
         if (ThemeUtils.isDarkTheme(getContext())) {
             toolbar.setNavigationIcon(R.drawable.action_back_light);
@@ -346,7 +344,7 @@ public class GiphySharingPreviewFragment extends BaseFragment<GiphySharingPrevie
     private void updateGiphyResults() {
         errorView.setVisibility(View.GONE);
         previewImageAssetView.clearImage();
-        loadingIndicator.show();
+        loadingIndicator.show(LoadingIndicatorView.INFINITE_LOADING_BAR());
         if (TextUtils.isEmpty(searchTerm) || searchTerm == null) {
             giphyResults = getStoreFactory().zMessagingApiStore()
                                             .getApi()

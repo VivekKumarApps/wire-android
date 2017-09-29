@@ -176,7 +176,7 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
     //private UpdateListener typingListener;
 
     private TypingIndicatorView typingIndicatorView;
-    private LoadingIndicatorView conversationLoadingIndicatorViewView;
+    //private LoadingIndicatorView conversationLoadingIndicatorViewView;
 
     private FrameLayout invisibleFooter;
 
@@ -470,7 +470,7 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
         });
 
 
-        conversationLoadingIndicatorViewView = ViewUtils.getView(view, R.id.lbv__conversation__loading_indicator);
+        //conversationLoadingIndicatorViewView = ViewUtils.getView(view, R.id.lbv__conversation__loading_indicator);
 
         // invisible footer to scroll over inputfield
         invisibleFooter = new FrameLayout(getActivity());
@@ -589,7 +589,7 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
     public void onDestroyView() {
         containerPreview = null;
         cursorView = null;
-        conversationLoadingIndicatorViewView = null;
+        //conversationLoadingIndicatorViewView = null;
 //        if (inputStateIndicator != null) {
 //            inputStateIndicator.removeUpdateListener(typingListener);
 //            inputStateIndicator = null;
@@ -664,7 +664,7 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
                                 if (toConvData.convType() == IConversation.Type.WAIT_FOR_CONNECTION) return;
 
                                 KeyboardUtils.hideKeyboard(getActivity());
-                                conversationLoadingIndicatorViewView.hide();
+                                //conversationLoadingIndicatorViewView.hide();
                                 cursorView.enableMessageWriting();
 
                                 final SharingController sharingController = inject(SharingController.class);
@@ -767,7 +767,7 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
     //////////////////////////////////////////////////////////////////////////////////////////
     @Override
     public void onAccentColorHasChanged(Object sender, int color) {
-        conversationLoadingIndicatorViewView.setColor(color);
+        //conversationLoadingIndicatorViewView.setColor(color);
         audioMessageRecordingView.setAccentColor(color);
         extendedCursorContainer.setAccentColor(color);
     }

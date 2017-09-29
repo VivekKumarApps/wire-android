@@ -163,7 +163,7 @@ class ChangeHandleFragment extends DialogFragment with FragmentHelper {
   private def disableEditing() = {
     editingEnabled = false
     handleEditText.setEnabled(false)
-    handleVerifyingIndicator.show()
+    handleVerifyingIndicator.show(LoadingIndicatorView.SPINNER)
     okButton.setEnabled(false)
     backButton.setEnabled(false)
   }
@@ -191,10 +191,7 @@ class ChangeHandleFragment extends DialogFragment with FragmentHelper {
         et.setText(suggestedHandle)
         et.setSelection(suggestedHandle.length)
       }
-      handleVerifyingIndicator = returning(findById[LoadingIndicatorView](layout, R.id.liv__username_verifying_indicator)) { v =>
-        v.setType(LoadingIndicatorView.SPINNER)
-        v.hide()
-      }
+      handleVerifyingIndicator = returning(findById[LoadingIndicatorView](layout, R.id.liv__username_verifying_indicator)) { _.hide() }
 
       okButton   = findById[View](layout, R.id.tv__ok_button)
       backButton = findById[View](layout, R.id.tv__back_button)

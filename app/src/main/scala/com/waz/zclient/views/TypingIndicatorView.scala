@@ -88,22 +88,18 @@ class TypingIndicatorView(val context: Context, val attrs: AttributeSet, val def
   (for {
     z <- zms
     convId <- convController.selectedConvId
-    _ = verbose(s"TY convId $convId")
     userIds <- z.typing.typingUsers(convId)
-    _ = verbose(s"TY userIds $userIds")
     userList <- Signal.future(z.users.getUsers(userIds))
-  } yield userList) { userList =>
+  } yield userList).onUi { userList =>
     update(userList)
   }
 
   private def update(userList: Seq[UserData]): Unit = userList.toList match {
     case Nil =>
-      verbose(s"TY update for Nil")
       nameTextView.setText("")
       setVisibility(View.GONE)
       animationRunning ! false
     case users =>
-      verbose("TY update for " + users.map(_.displayName).mkString(", "))
       nameTextView.setText(users.map(_.displayName).mkString(", "))
       setVisibility(View.VISIBLE)
       animationRunning ! true
