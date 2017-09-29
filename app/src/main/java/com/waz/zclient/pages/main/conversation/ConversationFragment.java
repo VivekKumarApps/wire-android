@@ -149,7 +149,7 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
                                                                                                   CursorCallback,
                                                                                                      AudioMessageRecordingView.Callback,
                                                                                                   RequestPermissionsObserver,
-                                                                                                  ImagePreviewLayout.Callback,
+                                                                                                 // ImagePreviewLayout.Callback,
                                                                                                   AssetIntentsManager.Callback,
                                                                                                   PagerControllerObserver,
                                                                                                   CursorImagesLayout.Callback,
@@ -196,6 +196,63 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
 
     public static ConversationFragment newInstance() {
         return new ConversationFragment();
+    }
+
+    @Override
+    public View onCreateView(LayoutInflater inflater, ViewGroup viewGroup, Bundle savedInstanceState) {
+        View view = inflater.inflate(R.layout.fragment_conversation, viewGroup, false);
+
+        final ConversationController convController = inject(ConversationController.class);
+
+        extendedCursorContainer = ViewUtils.getView(view, R.id.ecc__conversation);
+        containerPreview = ViewUtils.getView(view, R.id.fl__conversation_overlay);
+        cursorView = ViewUtils.getView(view, R.id.cv__cursor);
+        audioMessageRecordingView = ViewUtils.getView(view, R.id.amrv_audio_message_recording);
+
+        final Toolbar toolbar = setToolbar(view);
+
+        leftMenu = ViewUtils.getView(view, R.id.conversation_left_menu);
+
+        final TextView toolbarTitle = ViewUtils.getView(toolbar, R.id.tv__conversation_toolbar__title);
+
+        initConvController(convController);
+
+        convController.onSelectedConvName(new Callback<String>(){
+            @Override
+            public void callback(String name) {
+                if (toolbarTitle != null) toolbarTitle.setText(name);
+            }
+        });
+
+        ViewUtils.getView(view, R.id.sv__conversation_toolbar__verified_shield);
+
+        typingIndicatorView = ViewUtils.getView(view, R.id.tiv_typing_indicator_view);
+        listView = ViewUtils.getView(view, R.id.messages_list_view);
+
+        leftMenu.setOnMenuItemClickListener(new ActionMenuView.OnMenuItemClickListener() {
+            @Override
+            public boolean onMenuItemClick(MenuItem item) {
+                switch (item.getItemId()) {
+                    case R.id.action_collection:
+                        getCollectionController().openCollection();
+                        return true;
+                }
+                return false;
+            }
+        });
+
+
+        //conversationLoadingIndicatorViewView = ViewUtils.getView(view, R.id.lbv__conversation__loading_indicator);
+
+
+        // Recording audio messages
+        audioMessageRecordingView.setCallback(this);
+
+        if (savedInstanceState != null) {
+            isPreviewShown = savedInstanceState.getBoolean(SAVED_STATE_PREVIEW, false);
+        }
+
+        return view;
     }
 
     @Override
@@ -426,67 +483,7 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
         return toolbar;
     }
 
-    @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup viewGroup, Bundle savedInstanceState) {
-        View view = inflater.inflate(R.layout.fragment_conversation, viewGroup, false);
 
-        final ConversationController convController = inject(ConversationController.class);
-
-        extendedCursorContainer = ViewUtils.getView(view, R.id.ecc__conversation);
-        containerPreview = ViewUtils.getView(view, R.id.fl__conversation_overlay);
-        cursorView = ViewUtils.getView(view, R.id.cv__cursor);
-        audioMessageRecordingView = ViewUtils.getView(view, R.id.amrv_audio_message_recording);
-
-        final Toolbar toolbar = setToolbar(view);
-
-        leftMenu = ViewUtils.getView(view, R.id.conversation_left_menu);
-
-        final TextView toolbarTitle = ViewUtils.getView(toolbar, R.id.tv__conversation_toolbar__title);
-
-        initConvController(convController);
-
-        convController.onSelectedConvName(new Callback<String>(){
-            @Override
-            public void callback(String name) {
-                if (toolbarTitle != null) toolbarTitle.setText(name);
-            }
-        });
-
-        ViewUtils.getView(view, R.id.sv__conversation_toolbar__verified_shield);
-
-        typingIndicatorView = ViewUtils.getView(view, R.id.tiv_typing_indicator_view);
-        listView = ViewUtils.getView(view, R.id.messages_list_view);
-
-        leftMenu.setOnMenuItemClickListener(new ActionMenuView.OnMenuItemClickListener() {
-            @Override
-            public boolean onMenuItemClick(MenuItem item) {
-            switch (item.getItemId()) {
-                case R.id.action_collection:
-                    getCollectionController().openCollection();
-                    return true;
-            }
-            return false;
-            }
-        });
-
-
-        //conversationLoadingIndicatorViewView = ViewUtils.getView(view, R.id.lbv__conversation__loading_indicator);
-
-        // invisible footer to scroll over inputfield
-        invisibleFooter = new FrameLayout(getActivity());
-        AbsListView.LayoutParams params = new AbsListView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                                                                       getResources().getDimensionPixelSize(R.dimen.cursor__list_view_footer__height));
-        invisibleFooter.setLayoutParams(params);
-
-        // Recording audio messages
-        audioMessageRecordingView.setCallback(this);
-
-        if (savedInstanceState != null) {
-            isPreviewShown = savedInstanceState.getBoolean(SAVED_STATE_PREVIEW, false);
-        }
-
-        return view;
-    }
 
     @Override
     public void onViewCreated(View view, @Nullable Bundle savedInstanceState) {

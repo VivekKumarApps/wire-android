@@ -276,18 +276,6 @@ public class TrackingUtils {
                                                                   String.valueOf(conversation.getEphemeralExpiration().duration().toSeconds())));
     }
 
-    public static void onSentPhotoMessageFromSharing(GlobalTrackingController trackingController,
-                                                     IConversation conversation) {
-
-        trackingController.tagEvent(new SentPictureEvent(SentPictureEvent.Source.SHARING,
-                                                         conversation.getType().name(),
-                                                         SentPictureEvent.Method.DEFAULT,
-                                                         SentPictureEvent.SketchSource.NONE,
-                                                         conversation.isOtto(),
-                                                         conversation.isEphemeral(),
-                                                         String.valueOf(conversation.getEphemeralExpiration().duration().toSeconds())));
-    }
-
     public static void onSentPhotoMessage(GlobalTrackingController trackingController,
                                           IConversation conversation,
                                           SentPictureEvent.Source source,
@@ -323,7 +311,6 @@ public class TrackingUtils {
                            eventSource,
                            eventMethod);
     }
-
 
     public static void onSentPingMessage(GlobalTrackingController trackingController, ConversationData conv, boolean isOtto) {
         trackingController.tagEvent(OpenedMediaActionEvent.cursorAction(OpenedMediaAction.PING, conv, isOtto));

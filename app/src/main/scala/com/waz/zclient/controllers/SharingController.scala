@@ -115,11 +115,8 @@ class SharingController(implicit injector: Injector, wContext: WireContext, even
     } yield if (sent) resetContent()
   }
 
-  //For Java
-  private def isSharing(convId: String): Boolean = targetConvs.currentValue.exists(_.contains(ConvId(convId)))
-
-  def getSharedText(convId: String): String = sharableContent.currentValue.flatten match {
-    case Some(TextContent(t)) if isSharing(convId) => t
+  def getSharedText(convId: ConvId): String = sharableContent.currentValue.flatten match {
+    case Some(TextContent(t)) if targetConvs.currentValue.exists(_.contains(convId)) => t
     case _ => null
   }
 
