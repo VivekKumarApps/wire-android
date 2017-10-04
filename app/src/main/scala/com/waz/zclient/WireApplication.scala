@@ -119,13 +119,7 @@ object WireApplication {
     bind [ConversationController]          to new ConversationController()
 
     // current conversation data
-    bind [Signal[ConversationData]] to {
-      for {
-        zs <- inject[Signal[ZMessaging]]
-        convId <- inject[SelectionController].selectedConv
-        conv <- zs.convsStorage.signal(convId)
-      } yield conv
-    }
+    bind [Signal[ConversationData]] to inject[ConversationController].selectedConv.collect { case Some(conv) => conv }
 
     // accent color
     bind [Signal[AccentColor]] to inject[AccentColorController].accentColor

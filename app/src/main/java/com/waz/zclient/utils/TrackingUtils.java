@@ -172,7 +172,7 @@ public class TrackingUtils {
                                                 AudioEffect appliedAudioEffect,
                                                 boolean fromMinimisedState,
                                                 boolean sentWithQuickAction,
-                                                IConversation conversation) {
+                                                ConversationData conversation) {
         int durationSec = (int) audioAssetForUpload.getDuration().getSeconds();
 
 

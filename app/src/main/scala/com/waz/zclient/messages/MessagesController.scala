@@ -30,13 +30,14 @@ import com.waz.zclient.{Injectable, Injector}
 import org.threeten.bp.Instant
 import com.waz.ZLog.ImplicitTag._
 import com.waz.api.Message
+import com.waz.zclient.conversation.ConversationController
 
 class MessagesController()(implicit injector: Injector, ev: EventContext) extends Injectable {
   import com.waz.threading.Threading.Implicits.Background
 
   val zms = inject[Signal[ZMessaging]]
   val context = inject[Context]
-  val selectedConversation = inject[SelectionController].selectedConv
+  val currentConvId = inject[ConversationController].selectedConvId
   val navigationController = inject[INavigationController]
   val slidingPaneController = inject[ISlidingPaneController]
 
@@ -45,7 +46,7 @@ class MessagesController()(implicit injector: Injector, ev: EventContext) extend
 
   val currentConvIndex = for {
     z       <- zms
-    convId  <- selectedConversation
+    convId  <- currentConvId
     index   <- Signal.future(z.messagesStorage.msgsIndex(convId))
   } yield
     index
@@ -80,7 +81,7 @@ class MessagesController()(implicit injector: Injector, ev: EventContext) extend
       case false => Signal const Option.empty[ConvId]
       case true =>
         pageVisible flatMap {
-          case true => selectedConversation.map(Some(_))
+          case true => currentConvId.map(Some(_))
           case false => Signal const Option.empty[ConvId]
         }
     }

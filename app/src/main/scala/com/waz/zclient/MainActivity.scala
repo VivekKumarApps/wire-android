@@ -50,6 +50,7 @@ import com.waz.zclient.controllers.tracking.events.exception.ExceptionEvent
 import com.waz.zclient.controllers.tracking.events.profile.SignOut
 import com.waz.zclient.controllers.tracking.screens.ApplicationScreen
 import com.waz.zclient.controllers.{SharingController, UserAccountsController}
+import com.waz.zclient.conversation.ConversationController
 import com.waz.zclient.core.controllers.tracking.attributes.OpenedMediaAction
 import com.waz.zclient.core.controllers.tracking.events.media.OpenedMediaActionEvent
 import com.waz.zclient.core.controllers.tracking.events.session.LoggedOutEvent
@@ -93,7 +94,7 @@ class MainActivity extends BaseActivity
   lazy val accentColorController    = inject[AccentColorController]
   lazy val callPermissionController = inject[CallPermissionsController]
   lazy val permissions              = inject[PermissionsController]
-  lazy val selectionController      = inject[SelectionController]
+  lazy val conversationController   = inject[ConversationController]
   lazy val userAccountsController   = inject[UserAccountsController]
   lazy val appEntryController       = inject[AppEntryController]
 
@@ -441,10 +442,9 @@ class MainActivity extends BaseActivity
         globalTracking.onApplicationScreen(ApplicationScreen.CONVERSATION_LIST)
       case MESSAGE_STREAM =>
         (for {
-          zms <- zms.head
-          convId <- selectionController.selectedConv.head
-          Some(conv) <- zms.convsStorage.get(convId)
-          withOtto <- GlobalTrackingController.isOtto(conv, zms.usersStorage)
+          zms <- zms
+          Some(conv) <- conversationController.selectedConv
+          withOtto <- Signal.future(GlobalTrackingController.isOtto(conv, zms.usersStorage))
         } yield if (withOtto) ApplicationScreen.CONVERSATION__BOT else ApplicationScreen.CONVERSATION ).map(globalTracking.onApplicationScreen(_))
 
       case CAMERA =>

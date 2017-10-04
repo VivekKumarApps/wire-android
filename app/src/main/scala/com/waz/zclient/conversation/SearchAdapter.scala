@@ -43,21 +43,14 @@ TODO: some of this stuff is duplicated from MessagesListAdapter. Maybe there's a
 class SearchAdapter()(implicit context: Context, injector: Injector, eventContext: EventContext) extends RecyclerView.Adapter[ViewHolder] with Injectable { adapter =>
 
   val zms = inject[Signal[ZMessaging]]
-  val selectedConversation = inject[SelectionController].selectedConv
   val contentSearchQuery = inject[CollectionController].contentSearchQuery
-
-  val conv = for {
-    zs <- zms
-    convId <- selectedConversation
-    conv <- Signal future zs.convsStorage.get(convId)
-  } yield conv
 
   val cursor = for {
     zs <- zms
-    Some(c) <- conv
+    convId <- inject[ConversationController].selectedConvId
     query <- contentSearchQuery
   } yield
-    new RecyclerCursor(c.id, zs, notifier, messageFilter = Some(MessageFilter(None, Some(query))))
+    new RecyclerCursor(convId, zs, notifier, messageFilter = Some(MessageFilter(None, Some(query))))
 
   private var messages = Option.empty[RecyclerCursor]
   private var convId = ConvId()

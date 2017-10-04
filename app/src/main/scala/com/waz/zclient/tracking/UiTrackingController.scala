@@ -28,7 +28,7 @@ import com.waz.utils.events.{EventContext, EventStream, FutureEventStream, Signa
 import com.waz.zclient.controllers.tracking.events.conversation.EditedMessageEvent
 import com.waz.zclient.controllers.tracking.events.navigation.OpenedMoreActionsEvent
 import com.waz.zclient.controllers.{AssetsController, BrowserController, SharingController}
-import com.waz.zclient.conversation.CollectionController
+import com.waz.zclient.conversation.{CollectionController, ConversationController}
 import com.waz.zclient.core.controllers.tracking.attributes.OpenedMediaAction
 import com.waz.zclient.core.controllers.tracking.events.media.{OpenedActionHintEvent, OpenedEmojiKeyboardEvent, OpenedMediaActionEvent, SentPictureEvent}
 import com.waz.zclient.cursor.{CursorController, CursorMenuItem}
@@ -60,10 +60,9 @@ class UiTrackingController(implicit injector: Injector, ctx: Context, ec: EventC
   val cursorController      = inject[CursorController]
 
   val zms                   = inject[Signal[ZMessaging]]
-  val conversation          = inject[Signal[ConversationData]]
   val convInfo = for {
     z <- zms
-    c <- conversation
+    Some(c) <- inject[ConversationController].selectedConv
     user <- z.usersStorage.signal(c.creator)
   } yield {
     (c, c.convType == ConversationType.OneToOne && user.isWireBot)

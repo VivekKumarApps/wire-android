@@ -1,3 +1,20 @@
+/**
+ * Wire
+ * Copyright (C) 2017 Wire Swiss GmbH
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 package com.waz.zclient.views
 
 import android.os.Bundle
@@ -9,7 +26,7 @@ import com.waz.zclient.{BaseActivity, FragmentHelper, R}
 import com.waz.zclient.pages.BaseFragment
 import com.waz.ZLog._
 import com.waz.ZLog.ImplicitTag._
-import com.waz.api.{EphemeralExpiration, ImageAsset}
+import com.waz.api._
 import com.waz.model.ConversationData.ConversationType
 import com.waz.model.{ConvId, ConversationData}
 import com.waz.threading.{CancellableFuture, Threading}
@@ -19,7 +36,7 @@ import com.waz.zclient.controllers.SharingController
 import com.waz.zclient.controllers.drawing.IDrawingController
 import com.waz.zclient.conversation.ConversationController.ConversationChange
 import com.waz.zclient.conversation.{CollectionController, ConversationController}
-import com.waz.zclient.core.controllers.tracking.events.media.SentPictureEvent
+import com.waz.zclient.core.controllers.tracking.events.media.{CancelledRecordingAudioMessageEvent, PreviewedAudioMessageEvent, SentPictureEvent}
 import com.waz.zclient.core.stores.conversation.ConversationChangeRequester
 import com.waz.zclient.cursor.CursorView
 import com.waz.zclient.pages.extendedcursor.ExtendedCursorContainer
@@ -30,6 +47,7 @@ import com.waz.zclient.ui.animation.interpolators.penner.Expo
 import com.waz.zclient.ui.audiomessage.AudioMessageRecordingView
 import com.waz.zclient.ui.utils.KeyboardUtils
 import com.waz.zclient.utils.{Callback, LayoutSpec, TrackingUtils, ViewUtils}
+import com.waz.api.impl.AssetForUpload
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
@@ -40,6 +58,7 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
 
   private val convController = inject[ConversationController]
   private val collectionController = inject[CollectionController]
+  private val globalTrackingController = inject[GlobalTrackingController]
 
   private val previewShown = Signal(false)
 
@@ -123,7 +142,7 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
     ViewUtils.getView(getView, R.id.sv__conversation_toolbar__verified_shield)
 
     // Recording audio messages
-    //audioMessageRecordingView.setCallback(this)
+    audioMessageRecordingView.setCallback(audioMessageRecordingCallback)
     if (savedInstanceState != null) previewShown ! savedInstanceState.getBoolean(SAVED_STATE_PREVIEW, false)
     view
   }
@@ -137,7 +156,7 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
 
   convChange { _ =>
     extendedCursorContainer.close(true)
-    // getControllerFactory().getConversationScreenController().setSingleConversation(toConversation.getType() == IConversation.Type.ONE_TO_ONE); // TOD: ConversationScreenController should listen to this signal and do it itself
+    // getControllerFactory().getConversationScreenController().setSingleConversation(toConversation.getType() == IConversation.Type.ONE_TO_ONE); // TODO: ConversationScreenController should listen to this signal and do it itself
   }
 
   Signal.wrap(convChange) {
@@ -176,8 +195,6 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
   private def setDraft(fromId: Option[ConvId]) = fromId.foreach{ id => getStoreFactory.draftStore.setDraft(id, cursorView.getText.trim) }
 
   private def updateConv(fromId: Option[ConvId], toConv: ConversationData): Unit = {
-    val changeToDifferentConversation = fromId.fold(true){ _ != toConv.id }
-
     KeyboardUtils.hideKeyboard(getActivity)
     cursorView.enableMessageWriting()
 
@@ -215,7 +232,9 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
     )
   }
 
-  private lazy val imagePreviewCallback = new ImagePreviewLayout.Callback() {
+  private lazy val imagePreviewCallback = new ImagePreviewLayout.Callback {
+    private var currentConv: Option[ConversationData] = None
+    convController.selectedConv.on(Threading.Ui) { currentConv = _ }
 
     override def onCancelPreview(): Unit = {
       previewShown ! false
@@ -235,15 +254,15 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
       extendedCursorContainer.close(true)
     }
 
-    override def onSendPictureFromPreview(imageAsset: ImageAsset, source: ImagePreviewLayout.Source): Unit = {
-      getStoreFactory.conversationStore.sendMessage(imageAsset)
-      extendedCursorContainer.close(true)
-      onCancelPreview()
+    override def onSendPictureFromPreview(imageAsset: ImageAsset, source: ImagePreviewLayout.Source): Unit = imageAsset match {
+      case a: com.waz.api.impl.ImageAsset => currentConv.foreach { conv =>
+        convController.sendMessage(conv.id, a)
+        extendedCursorContainer.close(true)
+        onCancelPreview()
 
-      convController.selectedConv.currentValue.foreach(_.foreach { data =>
-        inject[GlobalTrackingController].tagEvent(new SentPictureEvent(
+        globalTrackingController.tagEvent(new SentPictureEvent(
           if (source == ImagePreviewLayout.Source.CAMERA) SentPictureEvent.Source.CAMERA else SentPictureEvent.Source.GALLERY,
-          data.convType.name(),
+          conv.convType.name(),
           source match {
             case ImagePreviewLayout.Source.IN_APP_GALLERY => SentPictureEvent.Method.KEYBOARD
             case ImagePreviewLayout.Source.DEVICE_GALLERY => SentPictureEvent.Method.FULL_SCREEN
@@ -251,12 +270,43 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
           },
           SentPictureEvent.SketchSource.NONE,
           false,
-          data.ephemeral != EphemeralExpiration.NONE,
-          String.valueOf(data.ephemeral.duration.toSeconds))
+          conv.ephemeral != EphemeralExpiration.NONE,
+          String.valueOf(conv.ephemeral.duration.toSeconds))
         )
-      })
+      }
+      case _ =>
     }
 
+  }
+
+  private lazy val audioMessageRecordingCallback = new AudioMessageRecordingView.Callback {
+    private def errorHandler = new MessageContent.Asset.ErrorHandler() {
+      override def noWifiAndFileIsLarge(sizeInBytes: Long, net: NetworkMode, answer: MessageContent.Asset.Answer): Unit = answer.ok()
+    }
+
+    private var currentConv: Option[ConversationData] = None
+    convController.selectedConv.on(Threading.Ui) { currentConv = _ }
+
+    override def onPreviewedAudioMessage(): Unit = currentConv.foreach { conv =>
+      globalTrackingController.tagEvent(new PreviewedAudioMessageEvent(conv.convType.name()))
+    }
+
+    override def onSendAudioMessage(audioAssetForUpload: AudioAssetForUpload, appliedAudioEffect: AudioEffect, sentWithQuickAction: Boolean): Unit = audioAssetForUpload match {
+      case a: com.waz.api.impl.AudioAssetForUpload =>
+        currentConv.foreach { conv =>
+          convController.sendMessage(conv.id, a, errorHandler)
+          hideAudioMessageRecording()
+          TrackingUtils.tagSentAudioMessageEvent(globalTrackingController, audioAssetForUpload, appliedAudioEffect, true, sentWithQuickAction, conv)
+        }
+      case _ =>
+    }
+
+    override def onCancelledAudioMessageRecording(): Unit = currentConv.foreach { conv =>
+      hideAudioMessageRecording()
+      globalTrackingController.tagEvent(new CancelledRecordingAudioMessageEvent(conv.name.getOrElse("")))
+    }
+
+    override def onStartedRecordingAudioMessage(): Unit = getControllerFactory.getGlobalLayoutController.keepScreenAwake()
   }
 
   private def splitPortraitMode = LayoutSpec.isTablet(getActivity) && ViewUtils.isInPortrait(getActivity) && getControllerFactory.getNavigationController.getPagerPosition == 0
@@ -298,6 +348,7 @@ object ConvFragment {
   val AUDIO_PERMISSION_REQUEST_ID = 864
   val AUDIO_FILTER_PERMISSION_REQUEST_ID = 865
 
+  def apply() = new ConvFragment
 
   trait Container {
 

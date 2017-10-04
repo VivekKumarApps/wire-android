@@ -78,6 +78,7 @@ public class SentPictureEvent extends Event {
         attributes.put(Attribute.EPHEMERAL_EXPIRATION, ephemeralExpiration);
     }
 
+
     @NonNull
     @Override
     public String getName() {

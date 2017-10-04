@@ -197,7 +197,7 @@ public class ImagePreviewLayout extends FrameLayout implements
     public interface Callback {
         void onCancelPreview();
 
-        void onSketchOnPreviewPicture(ImageAsset imageAsset, Source source, DrawingController.DrawingMethod method);
+        void onSketchOnPreviewPicture(ImageAsset imageAsset, Source source, IDrawingController.DrawingMethod method);
 
         void onSendPictureFromPreview(ImageAsset imageAsset, Source source);
     }

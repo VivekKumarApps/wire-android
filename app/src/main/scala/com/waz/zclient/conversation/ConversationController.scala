@@ -18,9 +18,9 @@
 package com.waz.zclient.conversation
 
 import android.content.Context
-import com.waz.api.Verification
+import com.waz.api.{MessageContent, Verification}
 import com.waz.model.ConversationData.ConversationType
-import com.waz.model.{ConvId, ConversationData, UserId}
+import com.waz.model.{ConvId, ConversationData, MessageData, UserId}
 import com.waz.service.ZMessaging
 import com.waz.threading.Threading
 import com.waz.utils.events.{EventContext, EventStream, Signal}
@@ -30,6 +30,10 @@ import com.waz.zclient.core.stores.conversation.ConversationChangeRequester
 import com.waz.zclient.utils.Callback
 import com.waz.zclient.{BaseActivity, Injectable, Injector}
 import com.waz.ZLog.ImplicitTag._
+import com.waz.api
+import com.waz.api.MessageContent.Asset.ErrorHandler
+import com.waz.api.impl.{AssetForUpload, ImageAsset}
+import com.waz.utils.wrappers.URI
 
 import scala.concurrent.Future
 
@@ -90,6 +94,10 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
 
   val selectedConv: Signal[Option[ConversationData]] = selectedConvId.flatMap { id => storage.flatMap(_.optSignal(id)) }
 
+  def onSelectedConv(callback: Callback[ConversationData]): Unit = { // TODO: remove when not used anymore
+    selectedConv.collect { case Some(c) => c } .on(Threading.Ui) { c => callback.callback(c) }
+  }
+
   val selectedConvIsGroup: Signal[Boolean] = selectedConv.flatMap {
     case Some(conv) => Signal.future(isGroup(conv))
     case None => Signal.const(false)
@@ -120,11 +128,25 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
     selectedConversationIsActive.on(Threading.Ui) { b => callback.callback(b) }
   }
 
+  def sendMessage(uri: URI, errorHandler: ErrorHandler): Unit = selectedConvId.currentValue.foreach { convId => sendMessage(convId, uri, errorHandler) }
+  def sendMessage(convId: ConvId, uri: URI, errorHandler: ErrorHandler): Unit = zms(_.convsUi.sendMessage(convId, uri, errorHandler))
+  def sendMessage(audioAsset: AssetForUpload, errorHandler: ErrorHandler): Unit = selectedConvId.currentValue.foreach { convId => sendMessage(convId, audioAsset, errorHandler) }
+  def sendMessage(convId: ConvId, audioAsset: AssetForUpload, errorHandler: ErrorHandler): Unit = zms(_.convsUi.sendMessage(convId, audioAsset, errorHandler))
+  def sendMessage(text: String): Unit = selectedConvId.currentValue.foreach { convId => sendMessage(convId, text) }
+  def sendMessage(convId: ConvId, text: String): Unit = zms(_.convsUi.sendMessage(convId, text))
+  def sendMessage(text: String, mentions: Set[UserId]): Unit = selectedConvId.currentValue.foreach { convId => sendMessage(convId, text, mentions) }
+  def sendMessage(convId: ConvId, text: String, mentions: Set[UserId]): Unit = zms(_.convsUi.sendMessage(convId, text, mentions))
+  def sendMessage(jpegData: Array[Byte]): Unit = selectedConvId.currentValue.foreach { convId => sendMessage(convId, jpegData) }
+  def sendMessage(convId: ConvId, jpegData: Array[Byte]): Unit = zms(_.convsUi.sendMessage(convId, jpegData))
+  def sendMessage(imageAsset: ImageAsset): Unit = selectedConvId.currentValue.foreach { convId => sendMessage(convId, imageAsset) }
+  def sendMessage(convId: ConvId, imageAsset: ImageAsset): Unit = zms(_.convsUi.sendMessage(convId, imageAsset))
+  def sendMessage(location: api.MessageContent.Location): Unit = selectedConvId.currentValue.foreach { convId => sendMessage(convId, location) }
+  def sendMessage(convId: ConvId, location: api.MessageContent.Location): Unit = zms(_.convsUi.sendMessage(convId, location))
 }
 
 object ConversationController {
   case class ConversationChange(from: Option[ConvId], to: Option[ConvId], requester: ConversationChangeRequester) {
-    def fromConversation(): ConvId = from.getOrElse(null) // TODO: remove when not used anymore
-    def toConversation(): ConvId = to.getOrElse(null) // TODO: remove when not used anymore
+    def fromConversation(): ConvId = from.orNull // TODO: remove when not used anymore
+    def toConversation(): ConvId = to.orNull // TODO: remove when not used anymore
   }
 }

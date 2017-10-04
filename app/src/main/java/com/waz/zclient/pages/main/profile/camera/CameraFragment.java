@@ -379,7 +379,7 @@ public class CameraFragment extends BaseFragment<CameraFragment.Container> imple
     @Override
     public void onSketchOnPreviewPicture(ImageAsset imageAsset,
                                          ImagePreviewLayout.Source source,
-                                         DrawingController.DrawingMethod method) {
+                                         IDrawingController.DrawingMethod method) {
         getControllerFactory().getDrawingController().showDrawing(imageAsset,
                                                                   IDrawingController.DrawingDestination.CAMERA_PREVIEW_VIEW);
     }

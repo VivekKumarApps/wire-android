@@ -149,7 +149,7 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
                                                                                                   CursorCallback,
                                                                                                      AudioMessageRecordingView.Callback,
                                                                                                   RequestPermissionsObserver,
-                                                                                                 // ImagePreviewLayout.Callback,
+                                                                                                  ImagePreviewLayout.Callback,
                                                                                                   AssetIntentsManager.Callback,
                                                                                                   PagerControllerObserver,
                                                                                                   CursorImagesLayout.Callback,
@@ -684,7 +684,7 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
                                     hideAudioMessageRecording();
                                 }
 
-                                final String sharedText = sharingController.getSharedText(toConversation.str());
+                                final String sharedText = sharingController.getSharedText(toConversation);
                                 if (!TextUtils.isEmpty(sharedText)) {
                                     cursorView.setText(sharedText);
                                     cursorView.enableMessageWriting();
@@ -1150,17 +1150,24 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
     }
 
     @Override
-    public void onSendAudioMessage(AudioAssetForUpload audioAssetForUpload,
-                                   AudioEffect appliedAudioEffect,
-                                   boolean sentWithQuickAction) {
+    public void onSendAudioMessage(final AudioAssetForUpload audioAssetForUpload,
+                                   final AudioEffect appliedAudioEffect,
+                                   final boolean sentWithQuickAction) {
         getStoreFactory().conversationStore().sendMessage(audioAssetForUpload, assetErrorHandlerAudio);
         hideAudioMessageRecording();
-        TrackingUtils.tagSentAudioMessageEvent(((BaseActivity) getActivity()).injectJava(GlobalTrackingController.class),
-                                               audioAssetForUpload,
-                                               appliedAudioEffect,
-                                               true,
-                                               sentWithQuickAction,
-                                               getStoreFactory().conversationStore().getCurrentConversation());
+        final ConversationController convController = inject(ConversationController.class);
+        final GlobalTrackingController trackingController = inject(GlobalTrackingController.class);
+        convController.onSelectedConv(new Callback<ConversationData>() {
+            @Override
+            public void callback(ConversationData conversationData) {
+                TrackingUtils.tagSentAudioMessageEvent(trackingController,
+                    audioAssetForUpload,
+                    appliedAudioEffect,
+                    true,
+                    sentWithQuickAction,
+                    conversationData);
+            }
+        });
     }
 
     @Override
@@ -1177,15 +1184,23 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
     }
 
     @Override
-    public void sendRecording(AudioAssetForUpload audioAssetForUpload, AudioEffect appliedAudioEffect) {
+    public void sendRecording(final AudioAssetForUpload audioAssetForUpload, final AudioEffect appliedAudioEffect) {
         getStoreFactory().conversationStore().sendMessage(audioAssetForUpload, assetErrorHandlerAudio);
         hideAudioMessageRecording();
-        TrackingUtils.tagSentAudioMessageEvent(((BaseActivity) getActivity()).injectJava(GlobalTrackingController.class),
-                                               audioAssetForUpload,
-                                               appliedAudioEffect,
-                                               false,
-                                               false,
-                                               getStoreFactory().conversationStore().getCurrentConversation());
+        final ConversationController convController = inject(ConversationController.class);
+        final GlobalTrackingController trackingController = inject(GlobalTrackingController.class);
+        convController.onSelectedConv(new Callback<ConversationData>() {
+            @Override
+            public void callback(ConversationData conversationData) {
+                TrackingUtils.tagSentAudioMessageEvent(trackingController,
+                    audioAssetForUpload,
+                    appliedAudioEffect,
+                    false,
+                    false,
+                    conversationData);
+            }
+        });
+
         extendedCursorContainer.close(true);
 
     }

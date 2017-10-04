@@ -28,6 +28,7 @@ import com.waz.service.ZMessaging
 import com.waz.threading.Threading
 import com.waz.utils.events.{EventContext, Signal}
 import com.waz.zclient.controllers.global.SelectionController
+import com.waz.zclient.conversation.ConversationController
 import com.waz.zclient.messages.MessageView.MsgBindOptions
 import com.waz.zclient.messages.MessagesListView.UnreadIndex
 import com.waz.zclient.messages.RecyclerCursor.RecyclerNotifier
@@ -40,20 +41,13 @@ class MessagesListAdapter(listDim: Signal[Dim2])(implicit inj: Injector, ec: Eve
 
   val zms = inject[Signal[ZMessaging]]
   val listController = inject[MessagesController]
-  val selectedConversation = inject[SelectionController].selectedConv
   val ephemeralCount = Signal(Set.empty[MessageId])
 
   var unreadIndex = UnreadIndex(0)
 
-  val conv = for {
-    zs <- zms
-    convId <- selectedConversation
-    conv <- Signal future zs.convsStorage.get(convId)
-  } yield conv
-
   val cursor = for {
     zs <- zms
-    Some(c) <- conv
+    Some(c) <- inject[ConversationController].selectedConv
   } yield
     (new RecyclerCursor(c.id, zs, notifier), c.convType)
 
