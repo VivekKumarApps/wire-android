@@ -58,7 +58,7 @@ import com.waz.zclient.pages.main.pickuser.controller.IPickUserController
 import com.waz.zclient.preferences.PreferencesController
 import com.waz.zclient.tracking.{CallingTrackingController, GlobalTrackingController, UiTrackingController}
 import com.waz.zclient.utils.{BackStackNavigator, BackendPicker, Callback, UiStorage}
-import com.waz.zclient.views.ImageController
+import com.waz.zclient.views.{DraftMap, ImageController}
 
 object WireApplication {
   var APP_INSTANCE: WireApplication = _
@@ -123,6 +123,10 @@ object WireApplication {
 
     // accent color
     bind [Signal[AccentColor]] to inject[AccentColorController].accentColor
+
+    // drafts
+    bind [DraftMap] to new DraftMap()
+
   }
 
   def services(ctx: WireContext) = new Module {

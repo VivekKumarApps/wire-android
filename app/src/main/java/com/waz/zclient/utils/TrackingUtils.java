@@ -277,6 +277,19 @@ public class TrackingUtils {
     }
 
     public static void onSentPhotoMessage(GlobalTrackingController trackingController,
+                                          ConversationData conversation,
+                                          SentPictureEvent.Source source,
+                                          SentPictureEvent.Method method) {
+        trackingController.tagEvent(new SentPictureEvent(source,
+            conversation.convType().name(),
+            method,
+            SentPictureEvent.SketchSource.NONE,
+            false,
+            conversation.ephemeral() != EphemeralExpiration.NONE,
+            String.valueOf(conversation.ephemeral().duration().toSeconds())));
+    }
+
+    public static void onSentPhotoMessage(GlobalTrackingController trackingController,
                                           IConversation conversation,
                                           SentPictureEvent.Source source,
                                           SentPictureEvent.Method method) {

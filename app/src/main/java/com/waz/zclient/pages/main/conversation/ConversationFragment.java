@@ -1157,7 +1157,7 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
         hideAudioMessageRecording();
         final ConversationController convController = inject(ConversationController.class);
         final GlobalTrackingController trackingController = inject(GlobalTrackingController.class);
-        convController.onSelectedConv(new Callback<ConversationData>() {
+        convController.withSelectedConv(new Callback<ConversationData>() {
             @Override
             public void callback(ConversationData conversationData) {
                 TrackingUtils.tagSentAudioMessageEvent(trackingController,
@@ -1189,7 +1189,7 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
         hideAudioMessageRecording();
         final ConversationController convController = inject(ConversationController.class);
         final GlobalTrackingController trackingController = inject(GlobalTrackingController.class);
-        convController.onSelectedConv(new Callback<ConversationData>() {
+        convController.withSelectedConv(new Callback<ConversationData>() {
             @Override
             public void callback(ConversationData conversationData) {
                 TrackingUtils.tagSentAudioMessageEvent(trackingController,
@@ -1449,7 +1449,9 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
     }
 
     @Override
-    public void onDataReceived(AssetIntentsManager.IntentType type, URI uri) {
+    public void onDataReceived(AssetIntentsManager.IntentType type, final URI uri) {
+        final ConversationController convController = inject(ConversationController.class);
+        final GlobalTrackingController trackingController = inject(GlobalTrackingController.class);
         switch (type) {
             case FILE_SHARING:
                 sharingUris.clear();
@@ -1469,23 +1471,33 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
                 break;
             case VIDEO_CURSOR_BUTTON:
                 sendVideo(uri);
-                ((BaseActivity) getActivity()).injectJava(GlobalTrackingController.class).tagEvent(new SentVideoMessageEvent((int) (AssetUtils.getVideoAssetDurationMilliSec(
-                    getContext(),
-                    uri) / 1000),
-                                                                                                  getStoreFactory().conversationStore().getCurrentConversation(),
-                                                                                                  SentVideoMessageEvent.Source.CURSOR_BUTTON));
+                convController.withSelectedConv(new Callback<ConversationData>() {
+                    @Override
+                    public void callback(ConversationData conversationData) {
+                        trackingController.tagEvent(new SentVideoMessageEvent(
+                            (int) (AssetUtils.getVideoAssetDurationMilliSec(getContext(), uri) / 1000),
+                            conversationData,
+                            SentVideoMessageEvent.Source.CURSOR_BUTTON
+                        ));
+                    }
+                });
                 break;
             case VIDEO:
                 sendVideo(uri);
-                ((BaseActivity) getActivity()).injectJava(GlobalTrackingController.class).tagEvent(new SentVideoMessageEvent((int) (AssetUtils.getVideoAssetDurationMilliSec(
-                    getContext(),
-                    uri) / 1000),
-                                                                                                  getStoreFactory().conversationStore().getCurrentConversation(),
-                                                                                                  SentVideoMessageEvent.Source.KEYBOARD));
+                convController.withSelectedConv(new Callback<ConversationData>() {
+                    @Override
+                    public void callback(ConversationData conversationData) {
+                        trackingController.tagEvent(new SentVideoMessageEvent(
+                            (int) (AssetUtils.getVideoAssetDurationMilliSec(getContext(), uri) / 1000),
+                            conversationData,
+                            SentVideoMessageEvent.Source.KEYBOARD
+                        ));
+                    }
+                });
                 break;
             case CAMERA:
                 sendImage(uri);
-                TrackingUtils.onSentPhotoMessage(((BaseActivity) getActivity()).injectJava(GlobalTrackingController.class),
+                TrackingUtils.onSentPhotoMessage(trackingController,
                                                  getStoreFactory().conversationStore().getCurrentConversation(),
                                                  SentPictureEvent.Source.CAMERA,
                                                  SentPictureEvent.Method.FULL_SCREEN);

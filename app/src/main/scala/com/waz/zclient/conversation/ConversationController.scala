@@ -18,9 +18,9 @@
 package com.waz.zclient.conversation
 
 import android.content.Context
-import com.waz.api.{MessageContent, Verification}
+import com.waz.api.{EphemeralExpiration, Verification}
 import com.waz.model.ConversationData.ConversationType
-import com.waz.model.{ConvId, ConversationData, MessageData, UserId}
+import com.waz.model.{ConvId, ConversationData, UserId}
 import com.waz.service.ZMessaging
 import com.waz.threading.Threading
 import com.waz.utils.events.{EventContext, EventStream, Signal}
@@ -48,7 +48,7 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
   private var currentConvId = Option.empty[ConvId]
 
   val selectedConvId = zms.flatMap(_.convsStats.selectedConversationId).collect { case Some(convId) => convId }
-  def getSelectedConvId(): ConvId = selectedConvId.currentValue.getOrElse(null); // TODO: remove when not used anymore
+  def getSelectedConvId(): ConvId = selectedConvId.currentValue.orNull; // TODO: remove when not used anymore
 
   // this should be the only UI entry point to change conv in SE
   def selectConv(id: Option[ConvId], requester: ConversationChangeRequester = ConversationChangeRequester.UPDATER): Future[Unit] = id match {
@@ -98,6 +98,10 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
     selectedConv.collect { case Some(c) => c } .on(Threading.Ui) { c => callback.callback(c) }
   }
 
+  def withSelectedConv(callback: Callback[ConversationData]): Unit = { // TODO: remove when not used anymore
+    selectedConv.collect { case Some(c) => c }.currentValue.foreach( callback.callback )
+  }
+
   val selectedConvIsGroup: Signal[Boolean] = selectedConv.flatMap {
     case Some(conv) => Signal.future(isGroup(conv))
     case None => Signal.const(false)
@@ -108,6 +112,7 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
   }
 
   val selectedConvIsVerified: Signal[Boolean] = selectedConv.map(_.fold(false)(_.verified == Verification.VERIFIED))
+  val selectedConvIsEphemeral: Signal[Boolean] = selectedConv.map(_.fold(false)(_.ephemeral != EphemeralExpiration.NONE))
 
   def unreadCountForConv(conversationData: ConversationData): Int =
     if (conversationData.archived || conversationData.muted || conversationData.hidden) 0

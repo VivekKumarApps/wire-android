@@ -18,7 +18,9 @@
 package com.waz.zclient.core.controllers.tracking.events.media;
 
 import android.support.annotation.NonNull;
+import com.waz.api.EphemeralExpiration;
 import com.waz.api.IConversation;
+import com.waz.model.ConversationData;
 import com.waz.zclient.core.controllers.tracking.attributes.Attribute;
 import com.waz.zclient.core.controllers.tracking.attributes.RangedAttribute;
 import com.waz.zclient.core.controllers.tracking.events.Event;
@@ -36,14 +38,14 @@ public class SentVideoMessageEvent extends Event {
         }
     }
 
-    public SentVideoMessageEvent(int durationAsSec, IConversation conversation, SentVideoMessageEvent.Source source) {
+    public SentVideoMessageEvent(int durationAsSec, ConversationData conversation, SentVideoMessageEvent.Source source) {
         rangedAttributes.put(RangedAttribute.VIDEO_AND_AUDIO_MESSAGE_DURATION, durationAsSec);
         attributes.put(Attribute.SOURCE, source.nameString);
         if (conversation != null) {
-            attributes.put(Attribute.WITH_BOT, String.valueOf(conversation.isOtto()));
-            attributes.put(Attribute.CONVERSATION_TYPE, conversation.getType().name());
-            attributes.put(Attribute.IS_EPHEMERAL, String.valueOf(conversation.isEphemeral()));
-            attributes.put(Attribute.EPHEMERAL_EXPIRATION, String.valueOf(conversation.getEphemeralExpiration().duration().toSeconds()));
+            attributes.put(Attribute.WITH_BOT, "false");
+            attributes.put(Attribute.CONVERSATION_TYPE, conversation.convType().name());
+            attributes.put(Attribute.IS_EPHEMERAL, String.valueOf(conversation.ephemeral() != EphemeralExpiration.NONE));
+            attributes.put(Attribute.EPHEMERAL_EXPIRATION, String.valueOf(conversation.ephemeral().duration().toSeconds()));
         }
     }
 
