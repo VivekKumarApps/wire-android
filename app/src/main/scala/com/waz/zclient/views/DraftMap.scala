@@ -18,22 +18,26 @@
 package com.waz.zclient.views
 
 import com.waz.ZLog.ImplicitTag._
+
 import scala.collection.mutable
 import com.waz.model.ConvId
 import com.waz.utils.events.Signal
 import com.waz.zclient.{Injectable, Injector}
 import com.waz.zclient.conversation.ConversationController
 
+import scala.concurrent.{ExecutionContext, Future}
+
 class DraftMap(implicit injector: Injector) extends Injectable {
   private val map = mutable.HashMap[ConvId, String]()
   private lazy val conversationController = inject[ConversationController]
 
-  def setCurrent(text: String): Unit = conversationController.selectedConvId.currentValue.foreach { id => set(id, text) }
+  def setCurrent(text: String)(implicit ec: ExecutionContext): Future[Unit] = conversationController.selectedConvId.head.map { id => set(id, text) }
   def set(id: ConvId, text: String): Unit = map.put(id, text)
 
   def get(id: ConvId): String = map.getOrElse(id, "")
 
   val currentDraft: Signal[String] = conversationController.selectedConvId.map( id => map.getOrElse(id, "") )
+  def withCurrentDraft(f: (String) => Unit)(implicit ec: ExecutionContext): Future[Unit] = currentDraft.head.map( f )
 
   def tearDown(): Unit = map.clear()
 }

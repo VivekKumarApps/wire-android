@@ -18,48 +18,59 @@
 package com.waz.zclient.views
 
 import android.content.{DialogInterface, Intent}
-import android.os.Bundle
+import android.os.{Build, Bundle, Handler}
 import android.provider.MediaStore
 import android.support.annotation.Nullable
-import android.support.v4.app.ActivityCompat
-import android.support.v7.app.AlertDialog
+import android.support.v4.app.{ActivityCompat, FragmentActivity}
 import android.support.v7.widget.{ActionMenuView, Toolbar}
 import android.text.TextUtils
+import android.text.format.Formatter
 import android.view._
-import android.widget.{AbsListView, FrameLayout, TextView}
-import com.waz.zclient.{BaseActivity, FragmentHelper, R}
+import android.widget.{AbsListView, FrameLayout, TextView, Toast}
+import com.waz.zclient.{FragmentHelper, R}
 import com.waz.zclient.pages.BaseFragment
 import com.waz.ZLog._
 import com.waz.ZLog.ImplicitTag._
 import com.waz.api._
+import com.waz.api.impl.ContentUriAssetForUpload
 import com.waz.model.ConversationData.ConversationType
-import com.waz.model.{ConvId, ConversationData}
+import com.waz.model.{AssetId, ConvId, ConversationData, MessageData}
 import com.waz.threading.{CancellableFuture, Threading}
 import com.waz.utils.events.Signal
 import com.waz.utils.returning
 import com.waz.utils.wrappers.URI
+import com.waz.zclient.camera.controllers.GlobalCameraController
 import com.waz.zclient.controllers.{SharingController, ThemeController}
+import com.waz.zclient.controllers.currentfocus.IFocusController
 import com.waz.zclient.controllers.drawing.IDrawingController
 import com.waz.zclient.controllers.navigation.Page
+import com.waz.zclient.controllers.orientation.OrientationControllerObserver
+import com.waz.zclient.controllers.permission.RequestPermissionsObserver
 import com.waz.zclient.conversation.ConversationController.ConversationChange
 import com.waz.zclient.conversation.{CollectionController, ConversationController}
-import com.waz.zclient.core.controllers.tracking.events.media.{CancelledRecordingAudioMessageEvent, PreviewedAudioMessageEvent, SentPictureEvent, SentVideoMessageEvent}
+import com.waz.zclient.core.controllers.tracking.attributes.OpenedMediaAction
+import com.waz.zclient.core.controllers.tracking.events.media._
 import com.waz.zclient.core.stores.conversation.ConversationChangeRequester
-import com.waz.zclient.cursor.CursorView
+import com.waz.zclient.cursor.{CursorCallback, CursorView}
+import com.waz.zclient.media.SoundController
+import com.waz.zclient.messages.MessagesListView
 import com.waz.zclient.pages.extendedcursor.ExtendedCursorContainer
-import com.waz.zclient.pages.extendedcursor.image.ImagePreviewLayout
+import com.waz.zclient.pages.extendedcursor.emoji.EmojiKeyboardLayout
+import com.waz.zclient.pages.extendedcursor.ephemeral.EphemeralLayout
+import com.waz.zclient.pages.extendedcursor.image.{CursorImagesLayout, ImagePreviewLayout}
+import com.waz.zclient.pages.extendedcursor.voicefilter.VoiceFilterLayout
 import com.waz.zclient.pages.main.conversation.AssetIntentsManager
+import com.waz.zclient.pages.main.pickuser.controller.IPickUserController
 import com.waz.zclient.pages.main.profile.camera.CameraContext
 import com.waz.zclient.tracking.GlobalTrackingController
 import com.waz.zclient.ui.animation.interpolators.penner.Expo
 import com.waz.zclient.ui.audiomessage.AudioMessageRecordingView
+import com.waz.zclient.ui.cursor.CursorMenuItem
 import com.waz.zclient.ui.utils.KeyboardUtils
-import com.waz.zclient.utils.{AssetUtils, LayoutSpec, PermissionUtils, TrackingUtils, ViewUtils}
+import com.waz.zclient.utils.{AssetUtils, Callback, LayoutSpec, PermissionUtils, SquareOrientation, TrackingUtils, ViewUtils}
 
 import scala.concurrent.duration._
-import scala.collection.JavaConverters._
 import scala.collection.mutable
-import scala.collection.mutable.ArrayBuffer
 
 class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHelper {
   import Threading.Implicits.Ui
@@ -73,7 +84,7 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
 
   private val draftMap = inject[DraftMap]
 
-  private var assetIntentsManager: AssetIntentsManager = _
+  private var assetIntentsManager: Option[AssetIntentsManager] = None
 
   private lazy val typingIndicatorView = ViewUtils.getView(getView, R.id.tiv_typing_indicator_view).asInstanceOf[TypingIndicatorView]
   private lazy val containerPreview = ViewUtils.getView(getView, R.id.fl__conversation_overlay).asInstanceOf[ViewGroup]
@@ -133,7 +144,7 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
   }
 
   private lazy val toolbarTitle = ViewUtils.getView(toolbar, R.id.tv__conversation_toolbar__title).asInstanceOf[TextView]
-  private lazy val listView = ViewUtils.getView(getView, R.id.messages_list_view)
+  private lazy val listView = ViewUtils.getView(getView, R.id.messages_list_view).asInstanceOf[MessagesListView]
 
   // invisible footer to scroll over inputfield
   private lazy val invisibleFooter = returning(new FrameLayout(getActivity)) {
@@ -164,28 +175,24 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
 
   override def onCreate(@Nullable savedInstanceState: Bundle): Unit = {
     super.onCreate(savedInstanceState)
-    assetIntentsManager = new AssetIntentsManager(getActivity, assetIntentsManagerCallback, savedInstanceState)
+    assetIntentsManager = Option(new AssetIntentsManager(getActivity, assetIntentsManagerCallback, savedInstanceState))
   }
 
   override def onStart(): Unit = {
     super.onStart()
 
-    draftMap.currentDraft.currentValue.foreach { draftText =>
-      if (!TextUtils.isEmpty(draftText)) cursorView.setText(draftText)
-    }
+    draftMap.withCurrentDraft { draftText => if (!TextUtils.isEmpty(draftText)) cursorView.setText(draftText) }
 
     getControllerFactory.getGlobalLayoutController.addKeyboardHeightObserver(extendedCursorContainer)
     getControllerFactory.getGlobalLayoutController.addKeyboardVisibilityObserver(extendedCursorContainer)
     extendedCursorContainer.setCallback(extendedCursorContainerCallback)
-/*
-    getControllerFactory.getRequestPermissionsController.addObserver(this)
-    getControllerFactory.getOrientationController.addOrientationControllerObserver(this)
-    cursorView.setCallback(this)
 
-
+    getControllerFactory.getRequestPermissionsController.addObserver(requestPermissionsObserver)
+    getControllerFactory.getOrientationController.addOrientationControllerObserver(orientationControllerObserver)
+    cursorView.setCallback(cursorCallback)
 
     audioMessageRecordingView.setDarkTheme(inject[ThemeController].isDarkTheme)
-    getControllerFactory.getNavigationController.addNavigationControllerObserver(this)
+    /*getControllerFactory.getNavigationController.addNavigationControllerObserver(this)
     getControllerFactory.getNavigationController.addPagerControllerObserver(this)
     getControllerFactory.getGiphyController.addObserver(this)
     getControllerFactory.getSingleImageController.addSingleImageObserver(this)
@@ -203,7 +210,7 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
 
   override def onSaveInstanceState(outState: Bundle): Unit = {
     super.onSaveInstanceState(outState)
-    assetIntentsManager.onSaveInstanceState(outState)
+    assetIntentsManager.foreach { _.onSaveInstanceState(outState) }
     outState.putBoolean(SAVED_STATE_PREVIEW, previewShown.currentValue.getOrElse(false))
   }
 
@@ -220,9 +227,9 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
     getControllerFactory.getGlobalLayoutController.removeKeyboardHeightObserver(extendedCursorContainer)
     getControllerFactory.getGlobalLayoutController.removeKeyboardVisibilityObserver(extendedCursorContainer)
     if (!cursorView.isEditingMessage) draftMap.setCurrent(cursorView.getText.trim)
-    /*
-    getControllerFactory.getOrientationController.removeOrientationControllerObserver(this)
-    getControllerFactory.getGiphyController.removeObserver(this)
+
+    getControllerFactory.getOrientationController.removeOrientationControllerObserver(orientationControllerObserver)
+    /*getControllerFactory.getGiphyController.removeObserver(this)
     getControllerFactory.getSingleImageController.removeSingleImageObserver(this)
 
     getStoreFactory.inAppNotificationStore.removeInAppNotificationObserver(this)
@@ -232,9 +239,9 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
     getControllerFactory.getAccentColorController.removeAccentColorObserver(this)
     getControllerFactory.getNavigationController.removeNavigationControllerObserver(this)
     getControllerFactory.getSlidingPaneController.removeObserver(this)
-    getControllerFactory.getConversationScreenController.setConversationStreamUiReady(false)
-    getControllerFactory.getRequestPermissionsController.removeObserver(this)
-*/
+    getControllerFactory.getConversationScreenController.setConversationStreamUiReady(false)*/
+    getControllerFactory.getRequestPermissionsController.removeObserver(requestPermissionsObserver)
+
     super.onStop()
   }
 
@@ -252,7 +259,10 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
 
   convChange { _ =>
     extendedCursorContainer.close(true)
-    // getControllerFactory().getConversationScreenController().setSingleConversation(toConversation.getType() == IConversation.Type.ONE_TO_ONE); // TODO: ConversationScreenController should listen to this signal and do it itself
+    convController.withSelectedConv { conv =>
+      getControllerFactory.getConversationScreenController.setSingleConversation(conv.convType == IConversation.Type.ONE_TO_ONE)
+      // TODO: ConversationScreenController should listen to this signal and do it itself
+    }
   }
 
   Signal.wrap(convChange) {
@@ -328,9 +338,8 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
     )
   }
 
-  override def onActivityResult(requestCode: Int, resultCode: Int, data: Intent): Unit = {
-    assetIntentsManager.onActivityResult(requestCode, resultCode, data)
-  }
+  override def onActivityResult(requestCode: Int, resultCode: Int, data: Intent): Unit =
+    assetIntentsManager.foreach { _.onActivityResult(requestCode, resultCode, data) }
 
   private lazy val imagePreviewCallback = new ImagePreviewLayout.Callback {
     private var currentConv: Option[ConversationData] = None
@@ -411,7 +420,7 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
   }
 
   private def sendVideo(uri: URI): Unit = {
-    getStoreFactory.conversationStore.sendMessage(AssetFactory.fromContentUri(uri), assetErrorHandlerVideo)
+    convController.sendMessage(ContentUriAssetForUpload(AssetId(), uri), assetErrorHandlerVideo)
     getControllerFactory.getNavigationController.setRightPage(Page.MESSAGE_STREAM, TAG)
     extendedCursorContainer.close(true)
   }
@@ -419,6 +428,25 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
   private def sendImage(uri: URI): Unit = ImageAssetFactory.getImageAsset(uri) match {
     case a: com.waz.api.impl.ImageAsset => convController.sendMessage(a)
     case _ =>
+  }
+
+  private val assetErrorHandler = new MessageContent.Asset.ErrorHandler() {
+    override def noWifiAndFileIsLarge(sizeInBytes: Long, net: NetworkMode, answer: MessageContent.Asset.Answer): Unit = Option(getActivity) match {
+      case None => answer.ok()
+      case Some(activity) =>
+        val dialog = ViewUtils.showAlertDialog(
+          activity,
+          R.string.asset_upload_warning__large_file__title,
+          R.string.asset_upload_warning__large_file__message_default,
+          R.string.asset_upload_warning__large_file__button_accept,
+          R.string.asset_upload_warning__large_file__button_cancel,
+          new DialogInterface.OnClickListener() { override def onClick(dialog: DialogInterface, which: Int): Unit = answer.ok() },
+          new DialogInterface.OnClickListener() { override def onClick(dialog: DialogInterface, which: Int): Unit = answer.cancel() }
+        )
+        dialog.setCancelable(false)
+        if (sizeInBytes > 0)
+          dialog.setMessage(getString(R.string.asset_upload_warning__large_file__message, Formatter.formatFileSize(getContext, sizeInBytes)))
+    }
   }
 
   private val assetErrorHandlerVideo = new MessageContent.Asset.ErrorHandler() {
@@ -444,7 +472,7 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
     override def onDataReceived(intentType: AssetIntentsManager.IntentType, uri: URI): Unit = intentType match {
       case AssetIntentsManager.IntentType.FILE_SHARING =>
         sharingUris.clear()
-        if (PermissionUtils.hasSelfPermissions(getActivity, FILE_SHARING_PERMISSION(0))) getStoreFactory.conversationStore.sendMessage(AssetFactory.fromContentUri(uri), errorHandler)
+        if (PermissionUtils.hasSelfPermissions(getActivity, FILE_SHARING_PERMISSION:_*)) convController.sendMessage(ContentUriAssetForUpload(AssetId(), uri), errorHandler)
         else {
           sharingUris += uri
           ActivityCompat.requestPermissions(getActivity, FILE_SHARING_PERMISSION, FILE_SHARING_PERMISSION_REQUEST_ID)
@@ -504,6 +532,179 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
         }
 
       getControllerFactory.getGlobalLayoutController.resetScreenAwakeState()
+    }
+  }
+
+  private val requestPermissionsObserver = new RequestPermissionsObserver() {
+    override def onRequestPermissionsResult(requestCode: Int, grantResults: Array[Int]) =
+      if (!assetIntentsManager.fold(true){_.onRequestPermissionsResult(requestCode, grantResults)}) requestCode match {
+        case OPEN_EXTENDED_CURSOR_IMAGES =>
+          if (PermissionUtils.verifyPermissions(grantResults:_*)) openExtendedCursor(ExtendedCursorContainer.Type.IMAGES)
+        case CAMERA_PERMISSION_REQUEST_ID =>
+          if (PermissionUtils.verifyPermissions(grantResults:_*)) {
+            val takeVideoIntent = new Intent(MediaStore.ACTION_VIDEO_CAPTURE)
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.JELLY_BEAN_MR1) takeVideoIntent.putExtra(MediaStore.EXTRA_VIDEO_QUALITY, 0)
+            startActivityForResult(takeVideoIntent, REQUEST_VIDEO_CAPTURE)
+          }
+          else cameraPermissionsFail
+        case FILE_SHARING_PERMISSION_REQUEST_ID =>
+          if (PermissionUtils.verifyPermissions(grantResults:_*)) {
+            sharingUris.foreach { uri => convController.sendMessage(ContentUriAssetForUpload(AssetId(), uri), assetErrorHandler) }
+            sharingUris.clear()
+          }
+          else ViewUtils.showAlertDialog(
+            getActivity,
+            R.string.asset_upload_error__not_found__title,
+            R.string.asset_upload_error__not_found__message,
+            R.string.asset_upload_error__not_found__button,
+            null,
+            true
+          )
+        case AUDIO_PERMISSION_REQUEST_ID =>
+          // No actions required if permission is granted
+          // TODO: https://wearezeta.atlassian.net/browse/AN-4027 Show information dialog if permission is not granted
+        case AUDIO_FILTER_PERMISSION_REQUEST_ID =>
+          if (PermissionUtils.verifyPermissions(grantResults:_*)) openExtendedCursor(ExtendedCursorContainer.Type.VOICE_FILTER_RECORDING)
+          else Toast.makeText(getActivity, R.string.audio_message_error__missing_audio_permissions, Toast.LENGTH_SHORT).show()
+        case _ =>
+      }
+    }
+
+  private def cameraPermissionsFail =
+    Toast.makeText(getActivity, R.string.video_message_error__missing_camera_permissions, Toast.LENGTH_SHORT).show()
+
+  private def openExtendedCursor(cursorType: ExtendedCursorContainer.Type): Unit = cursorType match {
+      case ExtendedCursorContainer.Type.NONE =>
+      case ExtendedCursorContainer.Type.EMOJIS =>
+        extendedCursorContainer.openEmojis(getControllerFactory.getUserPreferencesController.getRecentEmojis, getControllerFactory.getUserPreferencesController.getUnsupportedEmojis, emojiKeyboardLayoutCallback)
+      case ExtendedCursorContainer.Type.EPHEMERAL => convController.withSelectedConv { conv =>
+        extendedCursorContainer.openEphemeral(ephemeralLayoutCallback, conv.ephemeral)
+      }
+      case ExtendedCursorContainer.Type.VOICE_FILTER_RECORDING =>
+        extendedCursorContainer.openVoiceFilter(voiceFilterLayoutCallback)
+        convController.withSelectedConv { conv =>
+          globalTrackingController.tagEvent(OpenedMediaActionEvent.cursorAction(OpenedMediaAction.AUDIO_MESSAGE, conv, false))
+        }
+      case ExtendedCursorContainer.Type.IMAGES =>
+        extendedCursorContainer.openCursorImages(cursorImageLayoutCallback)
+        convController.withSelectedConv { conv =>
+          globalTrackingController.tagEvent(OpenedMediaActionEvent.cursorAction(OpenedMediaAction.PHOTO, conv, false))
+        }
+  }
+
+  private val emojiKeyboardLayoutCallback = new EmojiKeyboardLayout.Callback {
+    override def onEmojiSelected(emoji: LogTag) = {
+      cursorView.insertText(emoji)
+      getControllerFactory.getUserPreferencesController.addRecentEmoji(emoji)
+    }
+  }
+
+  private val ephemeralLayoutCallback = new EphemeralLayout.Callback {
+    override def onEphemeralExpirationSelected(expiration: EphemeralExpiration, close: Boolean) = {
+      if (close) extendedCursorContainer.close(false)
+      convController.setEphemeralExpiration(expiration)
+    }
+  }
+
+  private val voiceFilterLayoutCallback = new VoiceFilterLayout.Callback {
+    override def onAudioMessageRecordingStarted(): Unit = {
+      getControllerFactory.getGlobalLayoutController.keepScreenAwake()
+      convController.withSelectedConv { conv =>
+        globalTrackingController.tagEvent(new StartedRecordingAudioMessageEvent(conv.convType.name(), false))
+      }
+    }
+
+    override def onCancel(): Unit = extendedCursorContainer.close(false)
+
+    override def sendRecording(audioAssetForUpload: AudioAssetForUpload, appliedAudioEffect: AudioEffect): Unit = {
+      audioAssetForUpload match {
+        case a: com.waz.api.impl.AudioAssetForUpload => convController.sendMessage(a, errorHandler)
+        case _ =>
+      }
+
+      hideAudioMessageRecording()
+
+      convController.withSelectedConv { conv =>
+        TrackingUtils.tagSentAudioMessageEvent(globalTrackingController, audioAssetForUpload, appliedAudioEffect, false, false, conv)
+      }
+      extendedCursorContainer.close(true)
+    }
+  }
+
+  private val cursorImageLayoutCallback = new CursorImagesLayout.Callback {
+    override def openCamera(): Unit = getControllerFactory.getCameraController.openCamera(CameraContext.MESSAGE)
+
+    override def openVideo(): Unit = assetIntentsManager.foreach { _.maybeCaptureVideo(getActivity, AssetIntentsManager.IntentType.VIDEO) }
+
+    override def onGalleryPictureSelected(asset: ImageAsset): Unit = {
+      previewShown ! true
+      showImagePreview(asset, ImagePreviewLayout.Source.IN_APP_GALLERY)
+    }
+
+    override def openGallery(): Unit = assetIntentsManager.foreach { _.openGallery() }
+
+    override def onPictureTaken(imageAsset: ImageAsset): Unit = showImagePreview(imageAsset, ImagePreviewLayout.Source.CAMERA)
+  }
+
+  private val inLandscape = Signal(Option.empty[Boolean])
+
+  private val orientationControllerObserver = new  OrientationControllerObserver {
+    override def onOrientationHasChanged(squareOrientation: SquareOrientation): Unit = inLandscape.head.foreach { oldInLandscape =>
+      val newInLandscape = ViewUtils.isInLandscape(getContext)
+      oldInLandscape match {
+        case Some(landscape) if landscape != newInLandscape =>
+          val conversationListVisible = getControllerFactory.getNavigationController.getCurrentPage eq Page.CONVERSATION_LIST
+          if (newInLandscape && !conversationListVisible) {
+            val duration = getResources.getInteger(R.integer.framework_animation_duration_short)
+            CancellableFuture.delayed(duration.millis){
+              Option(getActivity).foreach(_.onBackPressed())
+            }
+          }
+      }
+      inLandscape ! Some(newInLandscape)
+    }
+  }
+
+  private val cursorCallback = new CursorCallback {
+    override def onMotionEventFromCursorButton(cursorMenuItem: CursorMenuItem, motionEvent: MotionEvent): Unit =
+      if (cursorMenuItem == CursorMenuItem.AUDIO_MESSAGE && audioMessageRecordingView.getVisibility != View.INVISIBLE)
+        audioMessageRecordingView.onMotionEventFromAudioMessageButton(motionEvent)
+
+    override def captureVideo(): Unit = inject[GlobalCameraController].releaseCamera().map { _ =>
+      assetIntentsManager.foreach { _.maybeCaptureVideo(getActivity, AssetIntentsManager.IntentType.VIDEO_CURSOR_BUTTON) }
+    }
+
+    override def hideExtendedCursor(): Unit = if (extendedCursorContainer.isExpanded) extendedCursorContainer.close(false)
+
+    override def onMessageSent(msg: MessageData): Unit = {
+      getStoreFactory.networkStore.doIfHasInternetOrNotifyUser(null)
+      convController.selectedConvId.head.foreach { inject[SharingController].clearSharingFor }
+    }
+
+    override def openExtendedCursor(tpe: ExtendedCursorContainer.Type): Unit = ConvFragment.this.openExtendedCursor(tpe)
+
+    override def onCursorClicked(): Unit = if (!cursorView.isEditingMessage) listView.scrollToBottom()
+
+    override def onFocusChange(hasFocus: Boolean): Unit = {
+      if (hasFocus) getControllerFactory.getFocusController.setFocus(IFocusController.CONVERSATION_CURSOR)
+      if (!LayoutSpec.isPhone(getActivity) && getControllerFactory.getPickUserController.isShowingPickUser(IPickUserController.Destination.CONVERSATION_LIST)) {
+        // On tablet, apply Page.MESSAGE_STREAM soft input mode when conversation cursor has focus (soft input mode of page gets changed when left startui is open)
+        val softInputMode = getControllerFactory.getGlobalLayoutController.getSoftInputModeForPage(if (hasFocus) Page.MESSAGE_STREAM else Page.PICK_USER)
+        ViewUtils.setSoftInputMode(getActivity.getWindow, softInputMode, TAG)
+      }
+    }
+
+    override def openFileSharing(): Unit = assetIntentsManager.foreach { _.openFileSharing() }
+
+    override def onCursorButtonLongPressed(cursorMenuItem: CursorMenuItem): Unit = if (cursorMenuItem == CursorMenuItem.AUDIO_MESSAGE) {
+      if (PermissionUtils.hasSelfPermissions(getActivity, AUDIO_PERMISSION:_*)) {
+        extendedCursorContainer.close(true)
+        if (audioMessageRecordingView.getVisibility != View.VISIBLE) {
+          inject[SoundController].shortVibrate()
+          audioMessageRecordingView.prepareForRecording()
+          audioMessageRecordingView.setVisibility(View.VISIBLE)
+        }
+      } else ActivityCompat.requestPermissions(getActivity, AUDIO_PERMISSION, AUDIO_PERMISSION_REQUEST_ID)
     }
   }
 

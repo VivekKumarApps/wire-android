@@ -69,7 +69,7 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
 
   def loadConv(id: ConvId): Future[Option[ConversationData]] = storage.head.flatMap(_.get(id))
 
-  def onConvLoaded(id: ConvId, callback: Callback[ConversationData]) =  // TODO: remove when not used anymore
+  def withConvLoaded(id: ConvId, callback: Callback[ConversationData]): Unit =  // TODO: remove when not used anymore
     loadConv(id).foreach {
       case Some(data) => callback.callback(data)
       case None =>
@@ -99,16 +99,19 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
   }
 
   def withSelectedConv(callback: Callback[ConversationData]): Unit = { // TODO: remove when not used anymore
-    selectedConv.collect { case Some(c) => c }.currentValue.foreach( callback.callback )
+    selectedConv.collect { case Some(c) => c }.head.foreach( callback.callback )
   }
+
+  def withSelectedConv(f: (ConversationData) => Unit): Future[Unit] =
+    selectedConv.collect { case Some(c) => c }.head.map( f )
 
   val selectedConvIsGroup: Signal[Boolean] = selectedConv.flatMap {
     case Some(conv) => Signal.future(isGroup(conv))
     case None => Signal.const(false)
   }
 
-  def onSelectedConvIsGroup(callback: Callback[java.lang.Boolean]): Unit = { // TODO: remove when not used anymore
-    selectedConvIsGroup.on(Threading.Ui) { b => callback.callback(b) }
+  def withSelectedConvIsGroup(callback: Callback[java.lang.Boolean]): Unit = { // TODO: remove when not used anymore
+    selectedConvIsGroup.head.foreach { b => callback.callback(b) }
   }
 
   val selectedConvIsVerified: Signal[Boolean] = selectedConv.map(_.fold(false)(_.verified == Verification.VERIFIED))
@@ -120,18 +123,16 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
 
   val selectedConvName: Signal[Option[String]] = selectedConv.map(_.flatMap(_.name))
 
-  def onSelectedConvName(callback: Callback[String]): Unit = { // TODO: remove when not used anymore
-    selectedConvName.on(Threading.Ui) { _.foreach(callback.callback) }
-  }
-
   val selectedConversationIsActive: Signal[Boolean] = selectedConv.map {
     case Some(conv) => conv.isActive
     case None => false
   }
 
-  def onSelectedConversationIsActive(callback: Callback[java.lang.Boolean]): Unit = { // TODO: remove when not used anymore
-    selectedConversationIsActive.on(Threading.Ui) { b => callback.callback(b) }
-  }
+  def setEphemeralExpiration(expiration: EphemeralExpiration): Future[Unit] = for {
+    z <- zms.head
+    id <- selectedConvId.head
+    _ <- z.convsUi.setEphemeral(id, expiration)
+  } yield ()
 
   def sendMessage(uri: URI, errorHandler: ErrorHandler): Unit = selectedConvId.currentValue.foreach { convId => sendMessage(convId, uri, errorHandler) }
   def sendMessage(convId: ConvId, uri: URI, errorHandler: ErrorHandler): Unit = zms(_.convsUi.sendMessage(convId, uri, errorHandler))
