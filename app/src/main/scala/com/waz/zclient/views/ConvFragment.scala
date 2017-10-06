@@ -17,40 +17,51 @@
  */
 package com.waz.zclient.views
 
+import java.util
+import java.util.{ArrayList, HashMap, List, Map}
+
 import android.content.{DialogInterface, Intent}
 import android.os.{Build, Bundle, Handler}
 import android.provider.MediaStore
 import android.support.annotation.Nullable
 import android.support.v4.app.{ActivityCompat, FragmentActivity}
+import android.support.v7.app.AlertDialog
 import android.support.v7.widget.{ActionMenuView, Toolbar}
 import android.text.TextUtils
 import android.text.format.Formatter
 import android.view._
 import android.widget.{AbsListView, FrameLayout, TextView, Toast}
-import com.waz.zclient.{FragmentHelper, R}
+import com.waz.zclient.{BaseActivity, FragmentHelper, R}
 import com.waz.zclient.pages.BaseFragment
 import com.waz.ZLog._
 import com.waz.ZLog.ImplicitTag._
 import com.waz.api._
 import com.waz.api.impl.ContentUriAssetForUpload
 import com.waz.model.ConversationData.ConversationType
-import com.waz.model.{AssetId, ConvId, ConversationData, MessageData}
+import com.waz.model.{MessageContent => _, _}
 import com.waz.threading.{CancellableFuture, Threading}
 import com.waz.utils.events.Signal
 import com.waz.utils.returning
 import com.waz.utils.wrappers.URI
+import com.waz.zclient.Intents.ShowDevicesIntent
 import com.waz.zclient.camera.controllers.GlobalCameraController
-import com.waz.zclient.controllers.{SharingController, ThemeController}
+import com.waz.zclient.controllers.accentcolor.AccentColorObserver
+import com.waz.zclient.controllers.confirmation.{ConfirmationCallback, ConfirmationRequest, IConfirmationController}
+import com.waz.zclient.controllers.{SharingController, ThemeController, UserAccountsController}
 import com.waz.zclient.controllers.currentfocus.IFocusController
 import com.waz.zclient.controllers.drawing.IDrawingController
-import com.waz.zclient.controllers.navigation.Page
+import com.waz.zclient.controllers.giphy.GiphyObserver
+import com.waz.zclient.controllers.globallayout.KeyboardVisibilityObserver
+import com.waz.zclient.controllers.navigation.{NavigationControllerObserver, Page, PagerControllerObserver}
 import com.waz.zclient.controllers.orientation.OrientationControllerObserver
 import com.waz.zclient.controllers.permission.RequestPermissionsObserver
+import com.waz.zclient.controllers.singleimage.SingleImageObserver
 import com.waz.zclient.conversation.ConversationController.ConversationChange
 import com.waz.zclient.conversation.{CollectionController, ConversationController}
 import com.waz.zclient.core.controllers.tracking.attributes.OpenedMediaAction
 import com.waz.zclient.core.controllers.tracking.events.media._
 import com.waz.zclient.core.stores.conversation.ConversationChangeRequester
+import com.waz.zclient.core.stores.inappnotification.SyncErrorObserver
 import com.waz.zclient.cursor.{CursorCallback, CursorView}
 import com.waz.zclient.media.SoundController
 import com.waz.zclient.messages.MessagesListView
@@ -60,6 +71,7 @@ import com.waz.zclient.pages.extendedcursor.ephemeral.EphemeralLayout
 import com.waz.zclient.pages.extendedcursor.image.{CursorImagesLayout, ImagePreviewLayout}
 import com.waz.zclient.pages.extendedcursor.voicefilter.VoiceFilterLayout
 import com.waz.zclient.pages.main.conversation.AssetIntentsManager
+import com.waz.zclient.pages.main.conversationpager.controller.SlidingPaneObserver
 import com.waz.zclient.pages.main.pickuser.controller.IPickUserController
 import com.waz.zclient.pages.main.profile.camera.CameraContext
 import com.waz.zclient.tracking.GlobalTrackingController
@@ -71,6 +83,8 @@ import com.waz.zclient.utils.{AssetUtils, Callback, LayoutSpec, PermissionUtils,
 
 import scala.concurrent.duration._
 import scala.collection.mutable
+import scala.concurrent.Future
+import scala.collection.JavaConversions._
 
 class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHelper {
   import Threading.Implicits.Ui
@@ -145,6 +159,7 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
 
   private lazy val toolbarTitle = ViewUtils.getView(toolbar, R.id.tv__conversation_toolbar__title).asInstanceOf[TextView]
   private lazy val listView = ViewUtils.getView(getView, R.id.messages_list_view).asInstanceOf[MessagesListView]
+  private lazy val conversationLoadingIndicatorViewView = ViewUtils.getView(getView, R.id.lbv__conversation__loading_indicator).asInstanceOf[LoadingIndicatorView]
 
   // invisible footer to scroll over inputfield
   private lazy val invisibleFooter = returning(new FrameLayout(getActivity)) {
@@ -192,16 +207,14 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
     cursorView.setCallback(cursorCallback)
 
     audioMessageRecordingView.setDarkTheme(inject[ThemeController].isDarkTheme)
-    /*getControllerFactory.getNavigationController.addNavigationControllerObserver(this)
-    getControllerFactory.getNavigationController.addPagerControllerObserver(this)
-    getControllerFactory.getGiphyController.addObserver(this)
-    getControllerFactory.getSingleImageController.addSingleImageObserver(this)
-    getControllerFactory.getAccentColorController.addAccentColorObserver(this)
-    getStoreFactory.participantsStore.addParticipantsStoreObserver(this)
-    getControllerFactory.getGlobalLayoutController.addKeyboardVisibilityObserver(this)
-    getStoreFactory.inAppNotificationStore.addInAppNotificationObserver(this)
-    getControllerFactory.getSlidingPaneController.addObserver(this)*/
-
+    getControllerFactory.getNavigationController.addNavigationControllerObserver(navigationControllerObserver)
+    getControllerFactory.getNavigationController.addPagerControllerObserver(pagerControllerObserver)
+    getControllerFactory.getGiphyController.addObserver(giphyObserver)
+    getControllerFactory.getSingleImageController.addSingleImageObserver(singleImageObserver)
+    getControllerFactory.getAccentColorController.addAccentColorObserver(accentColorObserver)
+    getControllerFactory.getGlobalLayoutController.addKeyboardVisibilityObserver(keyboardVisibilityObserver)
+    getStoreFactory.inAppNotificationStore.addInAppNotificationObserver(syncErrorObserver)
+    getControllerFactory.getSlidingPaneController.addObserver(slidingPaneObserver)
   }
 
   override def onResume(): Unit = {
@@ -229,17 +242,19 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
     if (!cursorView.isEditingMessage) draftMap.setCurrent(cursorView.getText.trim)
 
     getControllerFactory.getOrientationController.removeOrientationControllerObserver(orientationControllerObserver)
-    /*getControllerFactory.getGiphyController.removeObserver(this)
-    getControllerFactory.getSingleImageController.removeSingleImageObserver(this)
+    getControllerFactory.getGiphyController.removeObserver(giphyObserver)
+    getControllerFactory.getSingleImageController.removeSingleImageObserver(singleImageObserver)
 
-    getStoreFactory.inAppNotificationStore.removeInAppNotificationObserver(this)
-    getStoreFactory.participantsStore.removeParticipantsStoreObserver(this)
-    getControllerFactory.getGlobalLayoutController.removeKeyboardVisibilityObserver(this)
-    getControllerFactory.getNavigationController.removePagerControllerObserver(this)
-    getControllerFactory.getAccentColorController.removeAccentColorObserver(this)
-    getControllerFactory.getNavigationController.removeNavigationControllerObserver(this)
-    getControllerFactory.getSlidingPaneController.removeObserver(this)
-    getControllerFactory.getConversationScreenController.setConversationStreamUiReady(false)*/
+    getStoreFactory.inAppNotificationStore.removeInAppNotificationObserver(syncErrorObserver)
+    getControllerFactory.getGlobalLayoutController.removeKeyboardVisibilityObserver(keyboardVisibilityObserver)
+    getControllerFactory.getAccentColorController.removeAccentColorObserver(accentColorObserver)
+
+    getControllerFactory.getSlidingPaneController.removeObserver(slidingPaneObserver)
+
+    getControllerFactory.getConversationScreenController.setConversationStreamUiReady(false)
+
+    getControllerFactory.getNavigationController.removePagerControllerObserver(pagerControllerObserver)
+    getControllerFactory.getNavigationController.removeNavigationControllerObserver(navigationControllerObserver)
     getControllerFactory.getRequestPermissionsController.removeObserver(requestPermissionsObserver)
 
     super.onStop()
@@ -255,14 +270,6 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
   Signal.wrap(convChange).zip(previewShown) {
     case (ConversationChange(Some(from), Some(to), _), true) if from != to  => imagePreviewCallback.onCancelPreview()
     case _ =>
-  }
-
-  convChange { _ =>
-    extendedCursorContainer.close(true)
-    convController.withSelectedConv { conv =>
-      getControllerFactory.getConversationScreenController.setSingleConversation(conv.convType == IConversation.Type.ONE_TO_ONE)
-      // TODO: ConversationScreenController should listen to this signal and do it itself
-    }
   }
 
   Signal.wrap(convChange) {
@@ -302,6 +309,7 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
 
   private def updateConv(fromId: Option[ConvId], toConv: ConversationData): Unit = {
     KeyboardUtils.hideKeyboard(getActivity)
+    conversationLoadingIndicatorViewView.hide()
     cursorView.enableMessageWriting()
 
     val sharingController = inject[SharingController]
@@ -324,6 +332,10 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
       KeyboardUtils.showKeyboard(getActivity)
       sharingController.clearSharingFor(toConv.id)
     }
+
+    getControllerFactory.getConversationScreenController.setSingleConversation(toConv.convType == IConversation.Type.ONE_TO_ONE)
+    // TODO: ConversationScreenController should listen to this signal and do it itself
+    extendedCursorContainer.close(true)
   }
 
   private def inflateCollectionIcon(): Unit = {
@@ -342,9 +354,6 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
     assetIntentsManager.foreach { _.onActivityResult(requestCode, resultCode, data) }
 
   private lazy val imagePreviewCallback = new ImagePreviewLayout.Callback {
-    private var currentConv: Option[ConversationData] = None
-    convController.selectedConv.on(Threading.Ui) { currentConv = _ }
-
     override def onCancelPreview(): Unit = {
       previewShown ! false
       getControllerFactory.getNavigationController.setPagerEnabled(true)
@@ -364,7 +373,7 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
     }
 
     override def onSendPictureFromPreview(imageAsset: ImageAsset, source: ImagePreviewLayout.Source): Unit = imageAsset match {
-      case a: com.waz.api.impl.ImageAsset => currentConv.foreach { conv =>
+      case a: com.waz.api.impl.ImageAsset => convController.withSelectedConv { conv =>
         convController.sendMessage(conv.id, a)
         extendedCursorContainer.close(true)
         onCancelPreview()
@@ -394,24 +403,23 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
 
   private lazy val audioMessageRecordingCallback = new AudioMessageRecordingView.Callback {
 
-    private var currentConv: Option[ConversationData] = None
-    convController.selectedConv.on(Threading.Ui) { currentConv = _ }
-
-    override def onPreviewedAudioMessage(): Unit = currentConv.foreach { conv =>
+    override def onPreviewedAudioMessage(): Unit = convController.withSelectedConv { conv =>
       globalTrackingController.tagEvent(new PreviewedAudioMessageEvent(conv.convType.name()))
     }
 
     override def onSendAudioMessage(audioAssetForUpload: AudioAssetForUpload, appliedAudioEffect: AudioEffect, sentWithQuickAction: Boolean): Unit = audioAssetForUpload match {
       case a: com.waz.api.impl.AudioAssetForUpload =>
-        currentConv.foreach { conv =>
-          convController.sendMessage(conv.id, a, errorHandler)
+        convController.selectedConvId.head.map { convId =>
+          convController.sendMessage(convId, a, errorHandler)
           hideAudioMessageRecording()
-          TrackingUtils.tagSentAudioMessageEvent(globalTrackingController, audioAssetForUpload, appliedAudioEffect, true, sentWithQuickAction, conv)
+          convController.loadConv(convId).collect { case Some(conv) =>
+            TrackingUtils.tagSentAudioMessageEvent(globalTrackingController, audioAssetForUpload, appliedAudioEffect, true, sentWithQuickAction, conv)
+          }
         }
       case _ =>
     }
 
-    override def onCancelledAudioMessageRecording(): Unit = currentConv.foreach { conv =>
+    override def onCancelledAudioMessageRecording(): Unit = convController.withSelectedConv { conv =>
       hideAudioMessageRecording()
       globalTrackingController.tagEvent(new CancelledRecordingAudioMessageEvent(conv.name.getOrElse("")))
     }
@@ -467,7 +475,6 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
     }
   }
 
-
   private val assetIntentsManagerCallback = new AssetIntentsManager.Callback {
     override def onDataReceived(intentType: AssetIntentsManager.IntentType, uri: URI): Unit = intentType match {
       case AssetIntentsManager.IntentType.FILE_SHARING =>
@@ -481,24 +488,18 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
         showImagePreview(ImageAssetFactory.getImageAsset(uri), ImagePreviewLayout.Source.DEVICE_GALLERY)
       case AssetIntentsManager.IntentType.VIDEO_CURSOR_BUTTON =>
         sendVideo(uri)
-        convController.selectedConv.currentValue.foreach {
-          case None =>
-          case Some(conv) =>
-            globalTrackingController.tagEvent(new SentVideoMessageEvent((AssetUtils.getVideoAssetDurationMilliSec(getContext, uri) / 1000).toInt, conv, SentVideoMessageEvent.Source.CURSOR_BUTTON))
+        convController.withSelectedConv { conv =>
+          globalTrackingController.tagEvent(new SentVideoMessageEvent((AssetUtils.getVideoAssetDurationMilliSec(getContext, uri) / 1000).toInt, conv, SentVideoMessageEvent.Source.CURSOR_BUTTON))
         }
       case AssetIntentsManager.IntentType.VIDEO =>
         sendVideo(uri)
-        convController.selectedConv.currentValue.foreach {
-          case None =>
-          case Some(conv) =>
-            globalTrackingController.tagEvent(new SentVideoMessageEvent((AssetUtils.getVideoAssetDurationMilliSec(getContext, uri) / 1000).toInt, conv, SentVideoMessageEvent.Source.KEYBOARD))
+        convController.withSelectedConv { conv =>
+          globalTrackingController.tagEvent(new SentVideoMessageEvent((AssetUtils.getVideoAssetDurationMilliSec(getContext, uri) / 1000).toInt, conv, SentVideoMessageEvent.Source.KEYBOARD))
         }
       case AssetIntentsManager.IntentType.CAMERA =>
         sendImage(uri)
-        convController.selectedConv.currentValue.foreach {
-          case None =>
-          case Some(conv) =>
-            TrackingUtils.onSentPhotoMessage(globalTrackingController, conv, SentPictureEvent.Source.CAMERA, SentPictureEvent.Method.FULL_SCREEN)
+        convController.withSelectedConv { conv =>
+          TrackingUtils.onSentPhotoMessage(globalTrackingController, conv, SentPictureEvent.Source.CAMERA, SentPictureEvent.Method.FULL_SCREEN)
         }
         extendedCursorContainer.close(true)
     }
@@ -526,9 +527,9 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
       cursorView.onExtendedCursorClosed()
 
       if (lastType == ExtendedCursorContainer.Type.EPHEMERAL)
-        convController.selectedConv.collect { case Some(conv) => conv.ephemeral }.currentValue.foreach {
-          case expiration if expiration == EphemeralExpiration.NONE =>
-          case expiration => getControllerFactory.getUserPreferencesController.setLastEphemeralValue(expiration.milliseconds)
+        convController.withSelectedConv { conv =>
+          if (conv.ephemeral != EphemeralExpiration.NONE)
+            getControllerFactory.getUserPreferencesController.setLastEphemeralValue(conv.ephemeral.milliseconds)
         }
 
       getControllerFactory.getGlobalLayoutController.resetScreenAwakeState()
@@ -678,7 +679,7 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
 
     override def onMessageSent(msg: MessageData): Unit = {
       getStoreFactory.networkStore.doIfHasInternetOrNotifyUser(null)
-      convController.selectedConvId.head.foreach { inject[SharingController].clearSharingFor }
+      convController.selectedConvId.head.map { inject[SharingController].clearSharingFor }
     }
 
     override def openExtendedCursor(tpe: ExtendedCursorContainer.Type): Unit = ConvFragment.this.openExtendedCursor(tpe)
@@ -708,9 +709,166 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
     }
   }
 
+  private val navigationControllerObserver = new NavigationControllerObserver {
+    override def onPageVisible(page: Page): Unit = if (page == Page.MESSAGE_STREAM) {
+      inflateCollectionIcon()
+      cursorView.enableMessageWriting()
+    }
+  }
+
+  private val pagerControllerObserver = new PagerControllerObserver {
+    override def onPageScrolled(position: Int, positionOffset: Float, positionOffsetPixels: Int): Unit =
+      if (positionOffset > 0) extendedCursorContainer.close(true)
+
+    override def onPagerEnabledStateHasChanged(enabled: Boolean): Unit = {}
+    override def onPageSelected(position: Int): Unit = {}
+    override def onPageScrollStateChanged(state: Int): Unit = {}
+  }
+
+  private val giphyObserver = new GiphyObserver {
+    override def onSearch(keyword: LogTag): Unit = {}
+    override def onRandomSearch(): Unit = {}
+    override def onTrendingSearch(): Unit = {}
+    override def onCloseGiphy(): Unit = cursorView.setText("")
+    override def onCancelGiphy(): Unit = {}
+  }
+
+  private val singleImageObserver = new SingleImageObserver {
+    override def onShowSingleImage(message: Message): Unit = {}
+    override def onShowUserImage(user: User): Unit = {}
+    override def onHideSingleImage(): Unit = getControllerFactory.getNavigationController.setRightPage(Page.MESSAGE_STREAM, TAG)
+  }
+
+  private val accentColorObserver = new AccentColorObserver {
+    override def onAccentColorHasChanged(sender: Any, color: Int): Unit = {
+      conversationLoadingIndicatorViewView.setColor(color)
+      audioMessageRecordingView.setAccentColor(color)
+      extendedCursorContainer.setAccentColor(color)
+    }
+  }
+
+  private val keyboardVisibilityObserver = new KeyboardVisibilityObserver {
+    override def onKeyboardVisibilityChanged(keyboardIsVisible: Boolean, keyboardHeight: Int, currentFocus: View): Unit =
+      cursorView.notifyKeyboardVisibilityChanged(keyboardIsVisible, currentFocus)
+  }
+
+  private val syncErrorObserver = new SyncErrorObserver {
+    override def onSyncError(errorDescription: ErrorsList.ErrorDescription): Unit = errorDescription.getType match {
+      case ErrorType.CANNOT_SEND_ASSET_FILE_NOT_FOUND =>
+        ViewUtils.showAlertDialog(
+          getActivity,
+          R.string.asset_upload_error__not_found__title,
+          R.string.asset_upload_error__not_found__message,
+          R.string.asset_upload_error__not_found__button,
+          null,
+          true
+        )
+        errorDescription.dismiss()
+      case ErrorType.CANNOT_SEND_ASSET_TOO_LARGE =>
+        val maxAllowedSizeInBytes = AssetFactory.getMaxAllowedAssetSizeInBytes
+        if (maxAllowedSizeInBytes > 0) {
+          val dialog = ViewUtils.showAlertDialog(
+            getActivity,
+            R.string.asset_upload_error__file_too_large__title,
+            R.string.asset_upload_error__file_too_large__message_default,
+            R.string.asset_upload_error__file_too_large__button,
+            null,
+            true
+          )
+          dialog.setMessage(getString(R.string.asset_upload_error__file_too_large__message, Formatter.formatShortFileSize(getContext, maxAllowedSizeInBytes)))
+        }
+        errorDescription.dismiss()
+      case ErrorType.RECORDING_FAILURE =>
+        ViewUtils.showAlertDialog(
+          getActivity,
+          R.string.audio_message__recording__failure__title,
+          R.string.audio_message__recording__failure__message,
+          R.string.alert_dialog__confirmation,
+          null,
+          true
+        )
+        errorDescription.dismiss()
+      case ErrorType.CANNOT_SEND_MESSAGE_TO_UNVERIFIED_CONVERSATION =>
+        onErrorCanNotSentMessageToUnverifiedConversation(errorDescription)
+    }
+
+    private def onErrorCanNotSentMessageToUnverifiedConversation(errorDescription: ErrorsList.ErrorDescription) =
+      if (getControllerFactory.getNavigationController.getCurrentPage != Page.MESSAGE_STREAM) {
+        KeyboardUtils.hideKeyboard(getActivity)
+
+        (for {
+          self <- inject[UserAccountsController].currentUser.head
+          members <- convController.loadMembers(new ConvId(errorDescription.getConversation.getId))
+          unverifiedUsers = (members ++ self.map(Seq(_)).getOrElse(Nil)).filter {
+            !_.isVerified
+          }
+          unverifiedDevices <-
+          if (unverifiedUsers.size == 1) Future.sequence(unverifiedUsers.map(u => convController.loadClients(u.id).map(_.filter(!_.isVerified)))).map(_.flatten.size)
+          else Future.successful(0) // in other cases we don't need this number
+        } yield (self, unverifiedUsers, unverifiedDevices)).map { case (self, unverifiedUsers, unverifiedDevices) =>
+
+          val unverifiedNames = unverifiedUsers.map { u => if (self.map(_.id).contains(u.id)) getString(R.string.conversation_degraded_confirmation__header__you) else u.displayName }
+
+          val header = if (unverifiedUsers.isEmpty) {
+            getResources.getString(R.string.conversation__degraded_confirmation__header__someone)
+          } else if (unverifiedUsers.size == 1) {
+            getResources.getQuantityString(R.plurals.conversation__degraded_confirmation__header__single_user, unverifiedDevices, unverifiedNames.head)
+          } else {
+            getString(R.string.conversation__degraded_confirmation__header__multiple_user, unverifiedNames.mkString(","))
+          }
+
+          val onlySelfChanged = unverifiedUsers.size == 1 && self.map(_.id).contains(unverifiedUsers.head.id)
+
+          val callback = new ConfirmationCallback {
+            override def positiveButtonClicked(checkboxIsSelected: Boolean): Unit = {
+              errorDescription.getMessages.toSeq.foreach(_.retry())
+              errorDescription.dismiss()
+            }
+
+            override def onHideAnimationEnd(confirmed: Boolean, cancelled: Boolean, checkboxIsSelected: Boolean): Unit = if (!confirmed && !cancelled) {
+              if (onlySelfChanged) getContext.startActivity(ShowDevicesIntent(getActivity))
+              else getControllerFactory.getConversationScreenController.showParticipants(ViewUtils.getView(getActivity, R.id.cursor_menu_item_participant), true)
+            }
+
+            override def negativeButtonClicked(): Unit = {}
+
+            override def canceled(): Unit = {}
+          }
+
+          val positiveButton = getString(R.string.conversation__degraded_confirmation__positive_action)
+          val negativeButton =
+            if (onlySelfChanged) getString(R.string.conversation__degraded_confirmation__negative_action_self)
+            else getResources.getQuantityString(R.plurals.conversation__degraded_confirmation__negative_action, unverifiedUsers.size)
+
+          val messageCount = Math.max(1, errorDescription.getMessages.toSeq.size)
+          val message = getResources.getQuantityString(R.plurals.conversation__degraded_confirmation__message, messageCount)
+
+          val request =
+            new ConfirmationRequest.Builder()
+              .withHeader(header)
+              .withMessage(message)
+              .withPositiveButton(positiveButton)
+              .withNegativeButton(negativeButton)
+              .withConfirmationCallback(callback)
+              .withCancelButton()
+              .withBackgroundImage(R.drawable.degradation_overlay)
+              .withWireTheme(inject[ThemeController].getThemeDependentOptionsTheme)
+              .build
+
+          getControllerFactory.getConfirmationController.requestConfirmation(request, IConfirmationController.CONVERSATION)
+        }
+      }
+  }
+
+  private val slidingPaneObserver = new SlidingPaneObserver {
+    override def onPanelSlide(panel: View, slideOffset: Float): Unit = {}
+    override def onPanelOpened(panel: View): Unit = KeyboardUtils.closeKeyboardIfShown(getActivity)
+    override def onPanelClosed(panel: View): Unit = {}
+  }
+
   private def splitPortraitMode = LayoutSpec.isTablet(getActivity) && ViewUtils.isInPortrait(getActivity) && getControllerFactory.getNavigationController.getPagerPosition == 0
 
-  private def hideAudioMessageRecording() = if (audioMessageRecordingView.getVisibility != View.INVISIBLE) {
+  private def hideAudioMessageRecording(): Unit = if (audioMessageRecordingView.getVisibility != View.INVISIBLE) {
     audioMessageRecordingView.reset()
     audioMessageRecordingView.setVisibility(View.INVISIBLE)
     getControllerFactory.getGlobalLayoutController.resetScreenAwakeState()
@@ -720,7 +878,7 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
     val imagePreviewLayout = LayoutInflater.from(getContext).inflate(R.layout.fragment_cursor_images_preview, containerPreview, false).asInstanceOf[ImagePreviewLayout]
     imagePreviewLayout.setImageAsset(asset, source, imagePreviewCallback)
     imagePreviewLayout.setAccentColor(getControllerFactory.getAccentColorController.getAccentColor.getColor)
-    imagePreviewLayout.setTitle(getStoreFactory.conversationStore.getCurrentConversation.getName)
+    convController.withSelectedConv { conv => imagePreviewLayout.setTitle(conv.displayName) }
     containerPreview.addView(imagePreviewLayout)
     openPreview(containerPreview)
   }

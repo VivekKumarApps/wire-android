@@ -20,7 +20,7 @@ package com.waz.zclient.conversation
 import android.content.Context
 import com.waz.api.{EphemeralExpiration, Verification}
 import com.waz.model.ConversationData.ConversationType
-import com.waz.model.{ConvId, ConversationData, UserId}
+import com.waz.model.{ConvId, ConversationData, UserData, UserId}
 import com.waz.service.ZMessaging
 import com.waz.threading.Threading
 import com.waz.utils.events.{EventContext, EventStream, Signal}
@@ -33,6 +33,7 @@ import com.waz.ZLog.ImplicitTag._
 import com.waz.api
 import com.waz.api.MessageContent.Asset.ErrorHandler
 import com.waz.api.impl.{AssetForUpload, ImageAsset}
+import com.waz.model.otr.Client
 import com.waz.utils.wrappers.URI
 
 import scala.concurrent.Future
@@ -133,6 +134,14 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
     id <- selectedConvId.head
     _ <- z.convsUi.setEphemeral(id, expiration)
   } yield ()
+
+  def loadMembers(convId: ConvId): Future[Seq[UserData]] = for {
+    z <- zms.head
+    userIds <- z.membersStorage.activeMembers(convId).head
+    users <- z.users.getUsers(userIds.toSeq)
+  } yield users
+
+  def loadClients(userId: UserId): Future[Seq[Client]] = zms.head.flatMap(_.otrClientsStorage.getClients(userId)) // TODO: move to SE maybe?
 
   def sendMessage(uri: URI, errorHandler: ErrorHandler): Unit = selectedConvId.currentValue.foreach { convId => sendMessage(convId, uri, errorHandler) }
   def sendMessage(convId: ConvId, uri: URI, errorHandler: ErrorHandler): Unit = zms(_.convsUi.sendMessage(convId, uri, errorHandler))
