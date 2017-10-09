@@ -92,6 +92,7 @@ import com.waz.zclient.controllers.orientation.OrientationControllerObserver;
 import com.waz.zclient.controllers.permission.RequestPermissionsObserver;
 import com.waz.zclient.controllers.singleimage.SingleImageObserver;
 import com.waz.zclient.conversation.CollectionController;
+import com.waz.zclient.conversation.TypingIndicatorView;
 import com.waz.zclient.core.api.scala.ModelObserver;
 import com.waz.zclient.core.stores.IStoreFactory;
 import com.waz.zclient.core.stores.conversation.ConversationChangeRequester;
@@ -123,7 +124,6 @@ import com.waz.zclient.utils.PermissionUtils;
 import com.waz.zclient.utils.SquareOrientation;
 import com.waz.zclient.utils.ViewUtils;
 import com.waz.zclient.views.LoadingIndicatorView;
-import com.waz.zclient.views.TypingIndicatorView;
 import com.waz.zclient.views.e2ee.ShieldView;
 
 import java.util.ArrayList;
@@ -133,7 +133,7 @@ import java.util.Map;
 
 import static com.waz.zclient.Intents.ShowDevicesIntent;
 
-public class ConversationFragment extends BaseFragment<ConversationFragment.Container> implements ConversationStoreObserver,
+public class OldConversationFragment extends BaseFragment<OldConversationFragment.Container> implements ConversationStoreObserver,
     KeyboardVisibilityObserver,
     AccentColorObserver,
     ParticipantsStoreObserver,
@@ -155,7 +155,7 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
     ExtendedCursorContainer.Callback,
     EphemeralLayout.Callback,
     OrientationControllerObserver {
-    public static final String TAG = ConversationFragment.class.getName();
+    public static final String TAG = OldConversationFragment.class.getName();
     private static final String SAVED_STATE_PREVIEW = "SAVED_STATE_PREVIEW";
     private static final int REQUEST_VIDEO_CAPTURE = 911;
     private static final int CAMERA_PERMISSION_REQUEST_ID = 21;
@@ -194,8 +194,8 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
     private Self self = null;
     private Boolean isInLandscape = null;
 
-    public static ConversationFragment newInstance() {
-        return new ConversationFragment();
+    public static OldConversationFragment newInstance() {
+        return new OldConversationFragment();
     }
 
     private final ModelObserver<IConversation> conversationModelObserver = new ModelObserver<IConversation>() {
@@ -492,7 +492,7 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
         getControllerFactory().getRequestPermissionsController().addObserver(this);
         getControllerFactory().getOrientationController().addOrientationControllerObserver(this);
         cursorView.setCallback(this);
-        final String draftText = getStoreFactory().draftStore().getDraft(new ConvId(getStoreFactory().conversationStore().getCurrentConversation().getId()));
+        String draftText = getStoreFactory().draftStore().getDraft(new ConvId(getStoreFactory().conversationStore().getCurrentConversation().getId()));
         if (!TextUtils.isEmpty(draftText)) {
             cursorView.setText(draftText);
         }
@@ -581,7 +581,6 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
             inputStateIndicator.removeUpdateListener(typingListener);
             inputStateIndicator = null;
         }
-        typingIndicatorView.clear();
         typingIndicatorView = null;
         typingListener = null;
         conversationModelObserver.clear();
@@ -720,7 +719,7 @@ public class ConversationFragment extends BaseFragment<ConversationFragment.Cont
         final IStoreFactory storeFactory = getStoreFactory();
         final IControllerFactory controllerFactory = getControllerFactory();
         // TODO: Remove when call issue is resolved with https://wearezeta.atlassian.net/browse/CM-645
-        // And also why do we use the ConversationFragment to start a call from somewhere else....
+        // And also why do we use the OldConversationFragment to start a call from somewhere else....
         new Handler().postDelayed(new Runnable() {
             @Override
             public void run() {

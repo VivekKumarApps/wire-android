@@ -226,24 +226,26 @@ public class TrackingUtils {
                                                                   String.valueOf(conversation.ephemeral().duration().toSeconds())));
     }
 
-    public static void onSentGifMessage(GlobalTrackingController trackingController, IConversation conversation) {
-        trackingController.tagEvent(new CompletedMediaActionEvent(CompletedMediaType.TEXT,
-                                                                  conversation.getType().name(),
-                                                                  conversation.isOtto(),
-                                                                  conversation.isEphemeral(),
-                                                                  String.valueOf(conversation.getEphemeralExpiration().duration().toSeconds())));
+    public static void onSentGifMessage(GlobalTrackingController trackingController, ConversationData conversation) {
+        trackingController.tagEvent(new CompletedMediaActionEvent(
+            CompletedMediaType.TEXT,
+            conversation.convType().name(),
+            false,
+            conversation.ephemeral() != EphemeralExpiration.NONE,
+            String.valueOf(conversation.ephemeral().duration().toSeconds())));
 
-        trackingController.tagEvent(new SentPictureEvent(SentPictureEvent.Source.GIPHY,
-                                                         conversation.getType().name(),
-                                                         SentPictureEvent.Method.DEFAULT,
-                                                         SentPictureEvent.SketchSource.NONE,
-                                                         conversation.isOtto(),
-                                                         conversation.isEphemeral(),
-                                                         String.valueOf(conversation.getEphemeralExpiration().duration().toSeconds())));
+        trackingController.tagEvent(new SentPictureEvent(
+            SentPictureEvent.Source.GIPHY,
+            conversation.convType().name(),
+            SentPictureEvent.Method.DEFAULT,
+            SentPictureEvent.SketchSource.NONE,
+            false,
+            conversation.ephemeral() != EphemeralExpiration.NONE,
+            String.valueOf(conversation.ephemeral().duration().toSeconds())));
     }
 
     public static void onSentSketchMessage(GlobalTrackingController trackingController,
-                                           IConversation conversation,
+                                           ConversationData conversation,
                                            DrawingController.DrawingDestination drawingDestination) {
 
         SentPictureEvent.SketchSource sketchSource = SentPictureEvent.SketchSource.NONE;
@@ -259,21 +261,23 @@ public class TrackingUtils {
                 break;
         }
 
-        trackingController.tagEvent(new SentPictureEvent(SentPictureEvent.Source.SKETCH,
-                                                         conversation.getType().name(),
-                                                         SentPictureEvent.Method.DEFAULT,
-                                                         sketchSource,
-                                                         conversation.isOtto(),
-                                                         conversation.isEphemeral(),
-                                                         String.valueOf(conversation.getEphemeralExpiration().duration().toSeconds())));
+        trackingController.tagEvent(new SentPictureEvent(
+            SentPictureEvent.Source.SKETCH,
+            conversation.convType().name(),
+            SentPictureEvent.Method.DEFAULT,
+            sketchSource,
+            false,
+            conversation.ephemeral() != EphemeralExpiration.NONE,
+            String.valueOf(conversation.ephemeral().duration().toSeconds())));
     }
 
-    public static void onSentLocationMessage(GlobalTrackingController trackingController, IConversation conversation) {
-        trackingController.tagEvent(new CompletedMediaActionEvent(CompletedMediaType.LOCATION,
-                                                                  conversation.getType().name(),
-                                                                  conversation.isOtto(),
-                                                                  conversation.isEphemeral(),
-                                                                  String.valueOf(conversation.getEphemeralExpiration().duration().toSeconds())));
+    public static void onSentLocationMessage(GlobalTrackingController trackingController, ConversationData conversation) {
+        trackingController.tagEvent(new CompletedMediaActionEvent(
+            CompletedMediaType.LOCATION,
+            conversation.convType().name(),
+            false,
+            conversation.ephemeral() != EphemeralExpiration.NONE,
+            String.valueOf(conversation.ephemeral().duration().toSeconds())));
     }
 
     public static void onSentPhotoMessage(GlobalTrackingController trackingController,

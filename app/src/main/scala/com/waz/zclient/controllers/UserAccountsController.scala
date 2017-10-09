@@ -26,6 +26,7 @@ import com.waz.model._
 import com.waz.service.ZMessaging
 import com.waz.threading.Threading
 import com.waz.utils.events.{EventContext, Signal}
+import com.waz.zclient.conversation.ConversationController
 import com.waz.zclient.core.stores.conversation.{ConversationChangeRequester, OnConversationLoadedListener}
 import com.waz.zclient.utils.Callback
 import com.waz.zclient.{BaseActivity, Injectable, Injector}
@@ -98,7 +99,7 @@ class UserAccountsController(implicit injector: Injector, context: Context, ec: 
         else zms.map(_.membersStorage).head.flatMap(_.getByConv(conv.id)).map(_.map(_.userId).size > 2)
     } callback.callback(isGroup)
 
-  def createAndOpenConversation(users: Array[UserId], requester: ConversationChangeRequester,  activity: BaseActivity): Unit = {
+  def createAndOpenConversation(users: Array[UserId], requester: ConversationChangeRequester,  activity: BaseActivity): Future[Unit] = {
     val createConv = for {
       z <- zms.head
       user <- z.usersStorage.get(z.selfUserId)
@@ -109,12 +110,12 @@ class UserAccountsController(implicit injector: Injector, context: Context, ec: 
           z.convsUi.createGroupConversation(ConvId(), users, teamId)
     } yield conv
 
-    createConv.map { convData =>
-      activity.getStoreFactory.conversationStore.loadConversation(convData.id.str, new OnConversationLoadedListener {
-        override def onConversationLoaded(conversation: IConversation) =
-          activity.getStoreFactory.conversationStore.setCurrentConversation(Some(conversation), requester)
-      })
-    }(Threading.Ui)
+    val conversationController = inject[ConversationController]
+    (for {
+      conv <- createConv
+      Some(loaded) <- conversationController.loadConv(conv.id)
+      _ <- conversationController.selectConv(Some(loaded.id), requester)
+    } yield ())(Threading.Ui)
   }
 
   zms.map(_.teamId) { case teamId => _teamId = teamId }

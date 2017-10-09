@@ -22,6 +22,7 @@ import com.waz.api.IConversation;
 import com.waz.api.Message;
 import com.waz.api.OtrClient;
 import com.waz.api.User;
+import com.waz.model.ConvId;
 
 public interface ConversationScreenControllerObserver {
 
@@ -43,7 +44,7 @@ public interface ConversationScreenControllerObserver {
 
     void onAddPeopleToConversation();
 
-    void onShowConversationMenu(@IConversationScreenController.ConversationMenuRequester int requester, IConversation conversation, View anchorView);
+    void onShowConversationMenu(@IConversationScreenController.ConversationMenuRequester int requester, ConvId convId, View anchorView);
 
     void onShowOtrClient(OtrClient otrClient, User user);
 

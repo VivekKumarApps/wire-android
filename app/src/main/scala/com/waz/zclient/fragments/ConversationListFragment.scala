@@ -33,6 +33,7 @@ import com.waz.zclient.adapters.ConversationListAdapter
 import com.waz.zclient.controllers.UserAccountsController
 import com.waz.zclient.controllers.global.AccentColorController
 import com.waz.zclient.controllers.tracking.events.navigation.OpenedContactsEvent
+import com.waz.zclient.conversation.ConversationController
 import com.waz.zclient.core.stores.conversation.ConversationChangeRequester
 import com.waz.zclient.pages.BaseFragment
 import com.waz.zclient.pages.main.conversation.controller.IConversationScreenController
@@ -93,7 +94,6 @@ abstract class ConversationListFragment extends BaseFragment[ConversationListFra
   def init(view: View, adapter: ConversationListAdapter): Unit
 
   private def handleItemClick(conversationData: ConversationData): Unit = {
-    val iConversation = getStoreFactory.conversationStore.getConversation(conversationData.id.str)
     getControllerFactory.getLoadTimeLoggerController.clickConversationInList()
 
     val conversationChangeRequester =
@@ -102,7 +102,7 @@ abstract class ConversationListFragment extends BaseFragment[ConversationListFra
       else
         ConversationChangeRequester.CONVERSATION_LIST
 
-    getStoreFactory.conversationStore.setCurrentConversation(Option(iConversation), conversationChangeRequester)
+    inject[ConversationController].selectConv(Option(conversationData.id), conversationChangeRequester)
   }
 
   private def handleItemLongClick(conversationData: ConversationData, anchorView: View): Unit = {
@@ -111,8 +111,8 @@ abstract class ConversationListFragment extends BaseFragment[ConversationListFra
         conversationData.convType != ConversationType.WaitForConnection) {
       return
     }
-    val iConversation = getStoreFactory.conversationStore.getConversation(conversationData.id.str)
-    getControllerFactory.getConversationScreenController.showConversationMenu(IConversationScreenController.CONVERSATION_LIST_LONG_PRESS, iConversation, anchorView)
+
+    getControllerFactory.getConversationScreenController.showConversationMenu(IConversationScreenController.CONVERSATION_LIST_LONG_PRESS, conversationData.id, anchorView)
   }
 
   override def onCreateAnimation(transit: Int, enter: Boolean, nextAnim: Int): Animation = {

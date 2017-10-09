@@ -50,6 +50,7 @@ import com.waz.zclient.controllers.tracking.events.connect.{EnteredSearchEvent, 
 import com.waz.zclient.controllers.tracking.screens.ApplicationScreen
 import com.waz.zclient.controllers.userpreferences.IUserPreferencesController
 import com.waz.zclient.controllers.{SearchUserController, ThemeController, UserAccountsController}
+import com.waz.zclient.conversation.ConversationController
 import com.waz.zclient.core.controllers.tracking.attributes.ConversationType
 import com.waz.zclient.core.stores.conversation.ConversationChangeRequester
 import com.waz.zclient.core.stores.network.DefaultNetworkAction
@@ -69,6 +70,7 @@ import com.waz.zclient.views.pickuser.{ContactRowView, SearchBoxView, UserRowVie
 import com.waz.zclient.{BaseActivity, FragmentHelper, OnBackPressedListener, R}
 
 import scala.collection.JavaConverters._
+import scala.concurrent.{ExecutionContext, Future}
 
 object PickUserFragment {
   val TAG: String = classOf[PickUserFragment].getName
@@ -152,6 +154,7 @@ class PickUserFragment extends BaseFragment[PickUserFragment.Container]
   private lazy val userAccountsController = inject[UserAccountsController]
   private lazy val accentColor = inject[AccentColorController].accentColor.map(_.getColor())
   private lazy val themeController = inject[ThemeController]
+  private lazy val conversationController = inject[ConversationController]
 
   private case class PickableUser(userId : UserId, userName: String) extends PickableElement {
     def id: String = userId.str
@@ -542,9 +545,10 @@ class PickUserFragment extends BaseFragment[PickUserFragment.Container]
     }
   }
 
-  override def onUserClicked(userId: UserId, position: Int, anchorView: View): Unit = {
+  private def getUser(id: UserId) = getStoreFactory.zMessagingApiStore.getApi.getUser(id.str)
 
-    val user: User = getStoreFactory.zMessagingApiStore.getApi.getUser(userId.str)
+  override def onUserClicked(userId: UserId, position: Int, anchorView: View): Unit = {
+    val user: User = getUser(userId)
     if (user == null || user.isMe || getControllerFactory == null || getControllerFactory.isTornDown) {
       return
     }
@@ -561,23 +565,23 @@ class PickUserFragment extends BaseFragment[PickUserFragment.Container]
     }(Threading.Ui)
   }
 
-  override def onUserDoubleClicked(userId: UserId, position: Int, anchorView: View): Unit = {
-    if (!anchorView.isInstanceOf[ChatheadWithTextFooter]) {
-      return
+  override def onUserDoubleClicked(userId: UserId, position: Int, anchorView: View): Future[Unit] =
+    if (anchorView.isInstanceOf[ChatheadWithTextFooter] && searchUserController.selectedUsers.isEmpty) {
+
+    Option(getUser(userId)) match {
+      case Some(user) if !user.isMe && user.getConnectionStatus == User.ConnectionStatus.ACCEPTED =>
+        trackingController.tagEvent(new OpenedConversationEvent(ConversationType.ONE_TO_ONE_CONVERSATION.name, OpenedConversationEvent.Context.TOPUSER_DOUBLETAP, position + 1))
+        conversationController.getOrCreateConv(userId).flatMap { conv =>
+          conversationController.selectConv(Some(conv.id), ConversationChangeRequester.START_CONVERSATION)
+        }(Threading.Ui)
+      case _ => Future.successful({})
     }
-    val user: User = getStoreFactory.zMessagingApiStore.getApi.getUser(userId.str)
-    if (user == null || user.isMe || (user.getConnectionStatus ne User.ConnectionStatus.ACCEPTED) || searchUserController.selectedUsers.nonEmpty) {
-      return
-    }
-    trackingController.tagEvent(new OpenedConversationEvent(ConversationType.ONE_TO_ONE_CONVERSATION.name, OpenedConversationEvent.Context.TOPUSER_DOUBLETAP, position + 1))
-    getStoreFactory.conversationStore.setCurrentConversation(Option(user.getConversation), ConversationChangeRequester.START_CONVERSATION)
-  }
+  } else Future.successful({})
 
   override def onConversationClicked(conversationData: ConversationData, position: Int): Unit = {
-    val conversation: IConversation = getStoreFactory.conversationStore.getConversation(conversationData.id.str)
     KeyboardUtils.hideKeyboard(getActivity)
     trackingController.tagEvent(new OpenedConversationEvent(ConversationType.GROUP_CONVERSATION.name, OpenedConversationEvent.Context.SEARCH, 0))
-    getStoreFactory.conversationStore.setCurrentConversation(Option(conversation), ConversationChangeRequester.START_CONVERSATION)
+    conversationController.selectConv(Some(conversationData.id), ConversationChangeRequester.START_CONVERSATION)
   }
 
   override def getSelectedUsers: Set[UserId] = searchUserController.selectedUsers
@@ -585,7 +589,7 @@ class PickUserFragment extends BaseFragment[PickUserFragment.Container]
   def getSelectedAndExcluded: Set[UserId] = searchUserController.selectedUsers ++ searchUserController.excludedUsers.currentValue.getOrElse(Set[UserId]())
 
   override def onContactListUserClicked(userId: UserId): Unit = {
-    val user: User = getStoreFactory.zMessagingApiStore.getApi.getUser(userId.str)
+    val user: User = getUser(userId)
     if (user == null) {
       return
     }
@@ -725,7 +729,7 @@ class PickUserFragment extends BaseFragment[PickUserFragment.Container]
           val conversation: IConversation = user.getConversation
           if (conversation != null) {
             KeyboardUtils.hideKeyboard(getActivity)
-            getStoreFactory.conversationStore.setCurrentConversation(Option(conversation), ConversationChangeRequester.START_CONVERSATION)
+            conversationController.selectConv(Some(new ConvId(conversation.getId)), ConversationChangeRequester.START_CONVERSATION)
           }
         }
       case ConnectionStatus.PendingFromUser |

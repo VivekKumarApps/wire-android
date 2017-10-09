@@ -33,6 +33,7 @@ import com.waz.zclient.R;
 import com.waz.zclient.common.views.UserDetailsView;
 import com.waz.zclient.controllers.UserAccountsController;
 import com.waz.zclient.controllers.accentcolor.AccentColorObserver;
+import com.waz.zclient.conversation.ConversationController;
 import com.waz.zclient.core.stores.connect.ConnectStoreObserver;
 import com.waz.zclient.core.stores.connect.IConnectStore;
 import com.waz.zclient.pages.BaseFragment;
@@ -270,11 +271,10 @@ public class SendConnectRequestFragment extends BaseFragment<SendConnectRequestF
             }
         });
 
-        String convId = getStoreFactory() != null &&
-                        getStoreFactory().conversationStore().getCurrentConversation() != null ?
-                        getStoreFactory().conversationStore().getCurrentConversation().getId() :
-                        "";
-        final Boolean permissionToRemove = ((BaseActivity) getActivity()).injectJava(UserAccountsController.class).hasRemoveConversationMemberPermission(new ConvId(convId));
+        final Boolean permissionToRemove = ((BaseActivity) getActivity()).injectJava(UserAccountsController.class).hasRemoveConversationMemberPermission(
+            inject(ConversationController.class).getSelectedConvId()
+        );
+
         if (userRequester == IConnectStore.UserRequester.PARTICIPANTS && permissionToRemove) {
             footerMenu.setRightActionText(getString(R.string.glyph__minus));
         }

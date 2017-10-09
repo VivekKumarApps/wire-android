@@ -32,12 +32,14 @@ import com.waz.api.IConversation;
 import com.waz.api.SyncState;
 import com.waz.api.UpdateListener;
 import com.waz.api.User;
+import com.waz.model.ConvId;
 import com.waz.model.UserId;
 import com.waz.zclient.OnBackPressedListener;
 import com.waz.zclient.R;
 import com.waz.zclient.connect.ConnectRequestFragment;
 import com.waz.zclient.controllers.navigation.Page;
 import com.waz.zclient.controllers.navigation.PagerControllerObserver;
+import com.waz.zclient.conversation.ConversationController;
 import com.waz.zclient.core.stores.connect.IConnectStore;
 import com.waz.zclient.core.stores.conversation.ConversationChangeRequester;
 import com.waz.zclient.core.stores.conversation.ConversationStoreObserver;
@@ -314,14 +316,12 @@ public class SecondPageFragment extends BaseFragment<SecondPageFragment.Containe
 
     @Override
     public void onAcceptedConnectRequest(IConversation conversation) {
-        getStoreFactory().conversationStore().setCurrentConversation(conversation,
-                                                                        ConversationChangeRequester.CONVERSATION_LIST);
+        inject(ConversationController.class).selectConv(new ConvId(conversation.getId()),ConversationChangeRequester.CONVERSATION_LIST);
     }
 
     @Override
     public void onAcceptedPendingOutgoingConnectRequest(IConversation conversation) {
-        getStoreFactory().conversationStore().setCurrentConversation(conversation,
-                                                                        ConversationChangeRequester.CONNECT_REQUEST_ACCEPTED);
+        inject(ConversationController.class).selectConv(new ConvId(conversation.getId()), ConversationChangeRequester.CONNECT_REQUEST_ACCEPTED);
     }
 
     @Override

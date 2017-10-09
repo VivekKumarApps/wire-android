@@ -63,6 +63,7 @@ import com.waz.api.ConversationsList;
 import com.waz.api.IConversation;
 import com.waz.api.MessageContent;
 import com.waz.api.SyncState;
+import com.waz.model.ConversationData;
 import com.waz.zclient.BaseActivity;
 import com.waz.zclient.BuildConfig;
 import com.waz.zclient.OnBackPressedListener;
@@ -70,17 +71,14 @@ import com.waz.zclient.R;
 import com.waz.zclient.controllers.accentcolor.AccentColorObserver;
 import com.waz.zclient.controllers.permission.RequestPermissionsObserver;
 import com.waz.zclient.controllers.userpreferences.IUserPreferencesController;
+import com.waz.zclient.conversation.ConversationController;
 import com.waz.zclient.core.stores.conversation.ConversationChangeRequester;
 import com.waz.zclient.core.stores.conversation.ConversationStoreObserver;
 import com.waz.zclient.pages.BaseFragment;
 import com.waz.zclient.tracking.GlobalTrackingController;
 import com.waz.zclient.ui.text.GlyphTextView;
 import com.waz.zclient.ui.views.TouchRegisteringFrameLayout;
-import com.waz.zclient.utils.LayoutSpec;
-import com.waz.zclient.utils.PermissionUtils;
-import com.waz.zclient.utils.StringUtils;
-import com.waz.zclient.utils.TrackingUtils;
-import com.waz.zclient.utils.ViewUtils;
+import com.waz.zclient.utils.*;
 
 import java.util.List;
 import java.util.Locale;
@@ -297,10 +295,14 @@ public class LocationFragment extends BaseFragment<LocationFragment.Container> i
     public void onResume() {
         super.onResume();
         mapView.onResume();
-        IConversation currentConversation = getStoreFactory().conversationStore().getCurrentConversation();
-        if (currentConversation != null) {
-            toolbarTitle.setText(currentConversation.getName());
-        }
+
+        inject(ConversationController.class).withSelectedConv(new Callback<ConversationData>() {
+            @Override
+            public void callback(ConversationData conversationData) {
+                toolbarTitle.setText(conversationData.displayName());
+            }
+        });
+
         if (!getControllerFactory().getUserPreferencesController().hasPerformedAction(IUserPreferencesController.SEND_LOCATION_MESSAGE)) {
             getControllerFactory().getUserPreferencesController().setPerformedAction(IUserPreferencesController.SEND_LOCATION_MESSAGE);
             Toast.makeText(getContext(), R.string.location_sharing__tip, Toast.LENGTH_LONG).show();
@@ -508,8 +510,14 @@ public class LocationFragment extends BaseFragment<LocationFragment.Container> i
                 }
 
                 getControllerFactory().getLocationController().hideShareLocation(location);
-                TrackingUtils.onSentLocationMessage(((BaseActivity) getActivity()).injectJava(GlobalTrackingController.class),
-                                                    getStoreFactory().conversationStore().getCurrentConversation());
+
+                inject(ConversationController.class).withSelectedConv(new Callback<ConversationData>() {
+                    @Override
+                    public void callback(ConversationData conversationData) {
+                        TrackingUtils.onSentLocationMessage(inject(GlobalTrackingController.class), conversationData);
+                    }
+                });
+
                 break;
         }
     }

@@ -90,7 +90,7 @@ public class FileUploadTest extends FragmentTest<MainTestActivity> {
         intending(expectedIntent).respondWith(result);
 
         // attach fragment
-        attachFragment(ConversationFragment.newInstance(), ConversationFragment.TAG);
+        attachFragment(OldConversationFragment.newInstance(), OldConversationFragment.TAG);
 
         // verify stuff
         Thread.sleep(500);
@@ -120,7 +120,7 @@ public class FileUploadTest extends FragmentTest<MainTestActivity> {
         }).when(mockInAppNotificationStore).addInAppNotificationObserver(any(SyncErrorObserver.class));
 
         // attach fragment
-        attachFragment(ConversationFragment.newInstance(), ConversationFragment.TAG);
+        attachFragment(OldConversationFragment.newInstance(), OldConversationFragment.TAG);
 
         onView(withText(activity.getString(R.string.asset_upload_error__file_too_large__title))).check(isVisible());
     }
@@ -143,7 +143,7 @@ public class FileUploadTest extends FragmentTest<MainTestActivity> {
         }).when(mockInAppNotificationStore).addInAppNotificationObserver(any(SyncErrorObserver.class));
 
         // attach fragment
-        attachFragment(ConversationFragment.newInstance(), ConversationFragment.TAG);
+        attachFragment(OldConversationFragment.newInstance(), OldConversationFragment.TAG);
 
         onView(withText(activity.getString(R.string.asset_upload_error__not_found__title))).check(isVisible());
     }

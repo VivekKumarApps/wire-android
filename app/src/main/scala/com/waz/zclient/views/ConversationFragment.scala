@@ -17,21 +17,18 @@
  */
 package com.waz.zclient.views
 
-import java.util
-import java.util.{ArrayList, HashMap, List, Map}
-
 import android.content.{DialogInterface, Intent}
-import android.os.{Build, Bundle, Handler}
+import android.os.{Build, Bundle}
 import android.provider.MediaStore
 import android.support.annotation.Nullable
-import android.support.v4.app.{ActivityCompat, FragmentActivity}
-import android.support.v7.app.AlertDialog
+import android.support.v4.app.ActivityCompat
 import android.support.v7.widget.{ActionMenuView, Toolbar}
 import android.text.TextUtils
 import android.text.format.Formatter
 import android.view._
+import android.view.animation.Animation
 import android.widget.{AbsListView, FrameLayout, TextView, Toast}
-import com.waz.zclient.{BaseActivity, FragmentHelper, R}
+import com.waz.zclient.{FragmentHelper, R}
 import com.waz.zclient.pages.BaseFragment
 import com.waz.ZLog._
 import com.waz.ZLog.ImplicitTag._
@@ -47,7 +44,7 @@ import com.waz.zclient.Intents.ShowDevicesIntent
 import com.waz.zclient.camera.controllers.GlobalCameraController
 import com.waz.zclient.controllers.accentcolor.AccentColorObserver
 import com.waz.zclient.controllers.confirmation.{ConfirmationCallback, ConfirmationRequest, IConfirmationController}
-import com.waz.zclient.controllers.{SharingController, ThemeController, UserAccountsController}
+import com.waz.zclient.controllers.{ThemeController, UserAccountsController}
 import com.waz.zclient.controllers.currentfocus.IFocusController
 import com.waz.zclient.controllers.drawing.IDrawingController
 import com.waz.zclient.controllers.giphy.GiphyObserver
@@ -57,7 +54,7 @@ import com.waz.zclient.controllers.orientation.OrientationControllerObserver
 import com.waz.zclient.controllers.permission.RequestPermissionsObserver
 import com.waz.zclient.controllers.singleimage.SingleImageObserver
 import com.waz.zclient.conversation.ConversationController.ConversationChange
-import com.waz.zclient.conversation.{CollectionController, ConversationController}
+import com.waz.zclient.conversation.{CollectionController, ConversationController, TypingIndicatorView}
 import com.waz.zclient.core.controllers.tracking.attributes.OpenedMediaAction
 import com.waz.zclient.core.controllers.tracking.events.media._
 import com.waz.zclient.core.stores.conversation.ConversationChangeRequester
@@ -70,7 +67,8 @@ import com.waz.zclient.pages.extendedcursor.emoji.EmojiKeyboardLayout
 import com.waz.zclient.pages.extendedcursor.ephemeral.EphemeralLayout
 import com.waz.zclient.pages.extendedcursor.image.{CursorImagesLayout, ImagePreviewLayout}
 import com.waz.zclient.pages.extendedcursor.voicefilter.VoiceFilterLayout
-import com.waz.zclient.pages.main.conversation.AssetIntentsManager
+import com.waz.zclient.pages.main.conversation.{AssetIntentsManager, MessageStreamAnimation}
+import com.waz.zclient.pages.main.conversationlist.ConversationListAnimation
 import com.waz.zclient.pages.main.conversationpager.controller.SlidingPaneObserver
 import com.waz.zclient.pages.main.pickuser.controller.IPickUserController
 import com.waz.zclient.pages.main.profile.camera.CameraContext
@@ -79,32 +77,45 @@ import com.waz.zclient.ui.animation.interpolators.penner.Expo
 import com.waz.zclient.ui.audiomessage.AudioMessageRecordingView
 import com.waz.zclient.ui.cursor.CursorMenuItem
 import com.waz.zclient.ui.utils.KeyboardUtils
-import com.waz.zclient.utils.{AssetUtils, Callback, LayoutSpec, PermissionUtils, SquareOrientation, TrackingUtils, ViewUtils}
+import com.waz.zclient.utils.{AssetUtils, LayoutSpec, PermissionUtils, SquareOrientation, TrackingUtils, ViewUtils}
+import com.waz.zclient.views.e2ee.ShieldView
 
 import scala.concurrent.duration._
 import scala.collection.mutable
 import scala.concurrent.Future
 import scala.collection.JavaConversions._
 
-class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHelper {
+class ConversationFragment extends BaseFragment[ConversationFragment.Container] with FragmentHelper {
   import Threading.Implicits.Ui
-  import ConvFragment._
+  import ConversationFragment._
 
-  private val convController = inject[ConversationController]
-  private val collectionController = inject[CollectionController]
-  private val globalTrackingController = inject[GlobalTrackingController]
+  private lazy val convController = inject[ConversationController]
+  private lazy val collectionController = inject[CollectionController]
+  private lazy val globalTrackingController = inject[GlobalTrackingController]
 
-  private val previewShown = Signal(false)
+  private lazy val previewShown = Signal(false)
 
-  private val draftMap = inject[DraftMap]
+  private lazy val draftMap = inject[DraftMap]
 
   private var assetIntentsManager: Option[AssetIntentsManager] = None
 
   private lazy val typingIndicatorView = ViewUtils.getView(getView, R.id.tiv_typing_indicator_view).asInstanceOf[TypingIndicatorView]
+  private lazy val loadingIndicatorView = ViewUtils.getView(getView, R.id.lbv__conversation__loading_indicator).asInstanceOf[LoadingIndicatorView]
   private lazy val containerPreview = ViewUtils.getView(getView, R.id.fl__conversation_overlay).asInstanceOf[ViewGroup]
   private lazy val cursorView = ViewUtils.getView(getView, R.id.cv__cursor).asInstanceOf[CursorView]
+  private lazy val shieldView = ViewUtils.getView(getView, R.id.sv__conversation_toolbar__verified_shield).asInstanceOf[ShieldView]
   private lazy val audioMessageRecordingView = ViewUtils.getView(getView, R.id.amrv_audio_message_recording).asInstanceOf[AudioMessageRecordingView]
-  private lazy val extendedCursorContainer = ViewUtils.getView(getView, R.id.ecc__conversation).asInstanceOf[ExtendedCursorContainer] // this one now
+  private lazy val extendedCursorContainer = ViewUtils.getView(getView, R.id.ecc__conversation).asInstanceOf[ExtendedCursorContainer]
+  private lazy val toolbarTitle = ViewUtils.getView(toolbar, R.id.tv__conversation_toolbar__title).asInstanceOf[TextView]
+  private lazy val listView = ViewUtils.getView(getView, R.id.messages_list_view).asInstanceOf[MessagesListView]
+
+  // invisible footer to scroll over inputfield
+  private lazy val invisibleFooter = returning(new FrameLayout(getActivity)) {
+    _.setLayoutParams(
+      new AbsListView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, getResources.getDimensionPixelSize(R.dimen.cursor__list_view_footer__height))
+    )
+  }
+
   private val sharingUris = new mutable.ListBuffer[URI]()
 
   private lazy val leftMenu = returning(ViewUtils.getView(getView, R.id.conversation_left_menu).asInstanceOf[ActionMenuView]){
@@ -149,54 +160,117 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
     if (LayoutSpec.isTablet(getContext) && ViewUtils.isInLandscape(getContext)) toolbar.setNavigationIcon(null)
   }
 
-  convController.selectedConversationIsActive.zip(convController.selectedConvIsGroup) {
-    case (true, isGroup) =>
-      inflateCollectionIcon()
-      toolbar.getMenu.clear()
-      toolbar.inflateMenu(if (isGroup) R.menu.conversation_header_menu_audio else R.menu.conversation_header_menu_video)
-    case _ =>
-  }
-
-  private lazy val toolbarTitle = ViewUtils.getView(toolbar, R.id.tv__conversation_toolbar__title).asInstanceOf[TextView]
-  private lazy val listView = ViewUtils.getView(getView, R.id.messages_list_view).asInstanceOf[MessagesListView]
-  private lazy val conversationLoadingIndicatorViewView = ViewUtils.getView(getView, R.id.lbv__conversation__loading_indicator).asInstanceOf[LoadingIndicatorView]
-
-  // invisible footer to scroll over inputfield
-  private lazy val invisibleFooter = returning(new FrameLayout(getActivity)) {
-    _.setLayoutParams(
-      new AbsListView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, getResources.getDimensionPixelSize(R.dimen.cursor__list_view_footer__height))
+  override def onCreateAnimation(transit: Int, enter: Boolean, nextAnim: Int): Animation = {
+    if (nextAnim == 0 || Option(getContainer) == None || getControllerFactory.isTornDown) super.onCreateAnimation(transit, enter, nextAnim)
+    else if (nextAnim == R.anim.fragment_animation_swap_profile_conversation_tablet_in ||
+             nextAnim == R.anim.fragment_animation_swap_profile_conversation_tablet_out) new MessageStreamAnimation(
+      enter,
+      getResources.getInteger(R.integer.wire__animation__duration__medium),
+      0,
+      ViewUtils.getOrientationDependentDisplayWidth(getActivity) - getResources.getDimensionPixelSize(R.dimen.framework__sidebar_width)
     )
-  }
-
-  convController.selectedConvName {
-    case Some(name) => toolbarTitle.setText(name)
-    case None =>
-  }
-
-  override def onCreateView(inflater: LayoutInflater, viewGroup: ViewGroup, savedInstanceState: Bundle): View = {
-    val view = inflater.inflate(R.layout.fragment_conversation, viewGroup, false)
-    ViewUtils.getView(getView, R.id.sv__conversation_toolbar__verified_shield)
-
-    // Recording audio messages
-    audioMessageRecordingView.setCallback(audioMessageRecordingCallback)
-    if (savedInstanceState != null) previewShown ! savedInstanceState.getBoolean(SAVED_STATE_PREVIEW, false)
-    view
-  }
-
-  override def onViewCreated(view: View, @Nullable savedInstanceState: Bundle): Unit = {
-    super.onViewCreated(view, savedInstanceState)
-    audioMessageRecordingView.setVisibility(View.INVISIBLE)
+    else if (getControllerFactory.getPickUserController.isHideWithoutAnimations) new ConversationListAnimation(
+      0,
+      getResources.getDimensionPixelSize(R.dimen.open_new_conversation__thread_list__max_top_distance),
+      enter,
+      0,
+      0,
+      false,
+      1f
+    )
+    else if (enter) new ConversationListAnimation(
+      0,
+      getResources.getDimensionPixelSize(R.dimen.open_new_conversation__thread_list__max_top_distance),
+      enter,
+      getResources.getInteger(R.integer.framework_animation_duration_long),
+      getResources.getInteger(R.integer.framework_animation_duration_medium),
+      false,
+      1f
+    )
+    else new ConversationListAnimation(
+      0,
+      getResources.getDimensionPixelSize(R.dimen.open_new_conversation__thread_list__max_top_distance),
+      enter,
+      getResources.getInteger(R.integer.framework_animation_duration_medium),
+      0,
+      false,
+      1f
+    )
   }
 
   override def onCreate(@Nullable savedInstanceState: Bundle): Unit = {
     super.onCreate(savedInstanceState)
     assetIntentsManager = Option(new AssetIntentsManager(getActivity, assetIntentsManagerCallback, savedInstanceState))
+
+    convController.selectedConversationIsActive.zip(convController.selectedConvIsGroup).onUi {
+      case (true, isGroup) =>
+        inflateCollectionIcon()
+        toolbar.getMenu.clear()
+        toolbar.inflateMenu(if (isGroup) R.menu.conversation_header_menu_audio else R.menu.conversation_header_menu_video)
+      case _ =>
+    }
+
+    convController.selectedConvName.onUi {
+      case Some(name) => toolbarTitle.setText(name)
+      case None =>
+    }
+
+    Signal.wrap(convChange).zip(previewShown).onUi {
+      case (ConversationChange(Some(from), Some(to), _), true) if from != to => imagePreviewCallback.onCancelPreview()
+      case _ =>
+    }
+
+    convChange.onUi {
+      case ConversationChange(from, Some(to), requester) =>
+        verbose(s"CF changing conversatino from $from to $to, requester: $requester")
+        CancellableFuture.delay(getResources.getInteger(R.integer.framework_animation_duration_short).millis).map { _ =>
+          convController.loadConv(to).map {
+            case Some(toConv) =>
+              from.foreach{ id => draftMap.set(id, cursorView.getText.trim) }
+              if (toConv.convType != ConversationType.WaitForConnection) updateConv(from, toConv)
+            case None =>
+          }
+        }
+
+        // Saving factories since this fragment may be re-created before the runnable is done,
+        // but we still want runnable to work.
+        val storeFactory = Option(getStoreFactory)
+        val controllerFactory = Option(getControllerFactory)
+        // TODO: Remove when call issue is resolved with https://wearezeta.atlassian.net/browse/CM-645
+        // And also why do we use the OldConversationFragment to start a call from somewhere else....
+        CancellableFuture.delay(1000.millis).map { _ =>
+          (storeFactory, controllerFactory, requester) match {
+            case (Some(sf), Some(cf), ConversationChangeRequester.START_CONVERSATION_FOR_VIDEO_CALL) if !sf.isTornDown && !cf.isTornDown =>
+              cf.getCallingController.startCall(true)
+            case (Some(sf), Some(cf), ConversationChangeRequester.START_CONVERSATION_FOR_CALL) if !sf.isTornDown && !cf.isTornDown =>
+              cf.getCallingController.startCall(false)
+            case (Some(sf), Some(cf), ConversationChangeRequester.START_CONVERSATION_FOR_CALL) if !sf.isTornDown && !cf.isTornDown =>
+              cf.getCameraController.openCamera(CameraContext.MESSAGE)
+            case _ =>
+          }
+        }
+
+      case _ =>
+    }
+  }
+
+  override def onCreateView(inflater: LayoutInflater, viewGroup: ViewGroup, savedInstanceState: Bundle): View = {
+    inflater.inflate(R.layout.fragment_conversation, viewGroup, false)
+  }
+
+  override def onViewCreated(view: View, @Nullable savedInstanceState: Bundle): Unit = {
+    super.onViewCreated(view, savedInstanceState)
+
+    shieldView.setVisibility(View.GONE)
+
+    // Recording audio messages
+    audioMessageRecordingView.setVisibility(View.INVISIBLE)
+    audioMessageRecordingView.setCallback(audioMessageRecordingCallback)
+    if (savedInstanceState != null) previewShown ! savedInstanceState.getBoolean(SAVED_STATE_PREVIEW, false)
   }
 
   override def onStart(): Unit = {
     super.onStart()
-
-    draftMap.withCurrentDraft { draftText => if (!TextUtils.isEmpty(draftText)) cursorView.setText(draftText) }
 
     getControllerFactory.getGlobalLayoutController.addKeyboardHeightObserver(extendedCursorContainer)
     getControllerFactory.getGlobalLayoutController.addKeyboardVisibilityObserver(extendedCursorContainer)
@@ -205,6 +279,8 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
     getControllerFactory.getRequestPermissionsController.addObserver(requestPermissionsObserver)
     getControllerFactory.getOrientationController.addOrientationControllerObserver(orientationControllerObserver)
     cursorView.setCallback(cursorCallback)
+
+    draftMap.withCurrentDraft { draftText => if (!TextUtils.isEmpty(draftText)) cursorView.setText(draftText) }
 
     audioMessageRecordingView.setDarkTheme(inject[ThemeController].isDarkTheme)
     getControllerFactory.getNavigationController.addNavigationControllerObserver(navigationControllerObserver)
@@ -224,7 +300,7 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
   override def onSaveInstanceState(outState: Bundle): Unit = {
     super.onSaveInstanceState(outState)
     assetIntentsManager.foreach { _.onSaveInstanceState(outState) }
-    outState.putBoolean(SAVED_STATE_PREVIEW, previewShown.currentValue.getOrElse(false))
+    previewShown.head.foreach { isShown => outState.putBoolean(SAVED_STATE_PREVIEW, isShown) }
   }
 
   override def onPause(): Unit = {
@@ -239,11 +315,12 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
     cursorView.setCallback(null)
     getControllerFactory.getGlobalLayoutController.removeKeyboardHeightObserver(extendedCursorContainer)
     getControllerFactory.getGlobalLayoutController.removeKeyboardVisibilityObserver(extendedCursorContainer)
-    if (!cursorView.isEditingMessage) draftMap.setCurrent(cursorView.getText.trim)
 
     getControllerFactory.getOrientationController.removeOrientationControllerObserver(orientationControllerObserver)
     getControllerFactory.getGiphyController.removeObserver(giphyObserver)
     getControllerFactory.getSingleImageController.removeSingleImageObserver(singleImageObserver)
+
+    if (!cursorView.isEditingMessage) draftMap.setCurrent(cursorView.getText.trim)
 
     getStoreFactory.inAppNotificationStore.removeInAppNotificationObserver(syncErrorObserver)
     getControllerFactory.getGlobalLayoutController.removeKeyboardVisibilityObserver(keyboardVisibilityObserver)
@@ -260,77 +337,21 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
     super.onStop()
   }
 
-  override def onDestroyView(): Unit = {
-    typingIndicatorView.clear()
-    super.onDestroyView()
-  }
-
-  private val convChange = convController.convChanged.filter { _.to.isDefined }
-
-  Signal.wrap(convChange).zip(previewShown) {
-    case (ConversationChange(Some(from), Some(to), _), true) if from != to  => imagePreviewCallback.onCancelPreview()
-    case _ =>
-  }
-
-  Signal.wrap(convChange) {
-    case ConversationChange(from, Some(to), requester) =>
-
-      CancellableFuture.delay(getResources.getInteger(R.integer.framework_animation_duration_short).millis).map { _ =>
-        convController.loadConv(to).map {
-          case Some(toConv) =>
-            setDraft(from)
-            if (toConv.convType != ConversationType.WaitForConnection) updateConv(from, toConv)
-          case None =>
-        }
-      }
-
-      // Saving factories since this fragment may be re-created before the runnable is done,
-      // but we still want runnable to work.
-      val storeFactory = Option(getStoreFactory)
-      val controllerFactory = Option(getControllerFactory)
-      // TODO: Remove when call issue is resolved with https://wearezeta.atlassian.net/browse/CM-645
-      // And also why do we use the ConversationFragment to start a call from somewhere else....
-      CancellableFuture.delay(1000.millis).map { _ =>
-        (storeFactory, controllerFactory, requester) match {
-          case (Some(sf), Some(cf), ConversationChangeRequester.START_CONVERSATION_FOR_VIDEO_CALL) if !sf.isTornDown && !cf.isTornDown =>
-            cf.getCallingController.startCall(true)
-          case (Some(sf), Some(cf), ConversationChangeRequester.START_CONVERSATION_FOR_CALL) if !sf.isTornDown && !cf.isTornDown =>
-            cf.getCallingController.startCall(false)
-          case (Some(sf), Some(cf), ConversationChangeRequester.START_CONVERSATION_FOR_CALL) if !sf.isTornDown && !cf.isTornDown =>
-            cf.getCameraController.openCamera(CameraContext.MESSAGE)
-          case _ =>
-        }
-      }
-
-    case _ =>
-  }
-
-  private def setDraft(fromId: Option[ConvId]) = fromId.foreach{ id => getStoreFactory.draftStore.setDraft(id, cursorView.getText.trim) }
+  private lazy val convChange = convController.convChanged.filter { _.to.isDefined }
 
   private def updateConv(fromId: Option[ConvId], toConv: ConversationData): Unit = {
     KeyboardUtils.hideKeyboard(getActivity)
-    conversationLoadingIndicatorViewView.hide()
+    loadingIndicatorView.hide()
     cursorView.enableMessageWriting()
-
-    val sharingController = inject[SharingController]
 
     fromId.filter(_ != toConv.id).foreach { id =>
       getControllerFactory.getConversationScreenController.setConversationStreamUiReady(false)
-      sharingController.clearSharingFor(id)
 
       cursorView.setVisibility(if (toConv.isActive) View.VISIBLE else View.GONE)
-      cursorView.setText(getStoreFactory.draftStore.getDraft(toConv.id))
+      cursorView.setText(draftMap.get(toConv.id))
       cursorView.setConversation()
 
       hideAudioMessageRecording()
-    }
-
-    val sharedText = sharingController.getSharedText(toConv.id)
-    if (!TextUtils.isEmpty(sharedText)) {
-      cursorView.setText(sharedText)
-      cursorView.enableMessageWriting()
-      KeyboardUtils.showKeyboard(getActivity)
-      sharingController.clearSharingFor(toConv.id)
     }
 
     getControllerFactory.getConversationScreenController.setSingleConversation(toConv.convType == IConversation.Type.ONE_TO_ONE)
@@ -647,7 +668,7 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
     override def onPictureTaken(imageAsset: ImageAsset): Unit = showImagePreview(imageAsset, ImagePreviewLayout.Source.CAMERA)
   }
 
-  private val inLandscape = Signal(Option.empty[Boolean])
+  private lazy val inLandscape = Signal(Option.empty[Boolean])
 
   private val orientationControllerObserver = new  OrientationControllerObserver {
     override def onOrientationHasChanged(squareOrientation: SquareOrientation): Unit = inLandscape.head.foreach { oldInLandscape =>
@@ -661,6 +682,7 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
               Option(getActivity).foreach(_.onBackPressed())
             }
           }
+        case _ =>
       }
       inLandscape ! Some(newInLandscape)
     }
@@ -679,10 +701,9 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
 
     override def onMessageSent(msg: MessageData): Unit = {
       getStoreFactory.networkStore.doIfHasInternetOrNotifyUser(null)
-      convController.selectedConvId.head.map { inject[SharingController].clearSharingFor }
     }
 
-    override def openExtendedCursor(tpe: ExtendedCursorContainer.Type): Unit = ConvFragment.this.openExtendedCursor(tpe)
+    override def openExtendedCursor(tpe: ExtendedCursorContainer.Type): Unit = ConversationFragment.this.openExtendedCursor(tpe)
 
     override def onCursorClicked(): Unit = if (!cursorView.isEditingMessage) listView.scrollToBottom()
 
@@ -741,7 +762,7 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
 
   private val accentColorObserver = new AccentColorObserver {
     override def onAccentColorHasChanged(sender: Any, color: Int): Unit = {
-      conversationLoadingIndicatorViewView.setColor(color)
+      loadingIndicatorView.setColor(color)
       audioMessageRecordingView.setAccentColor(color)
       extendedCursorContainer.setAccentColor(color)
     }
@@ -891,8 +912,8 @@ class ConvFragment extends BaseFragment[ConvFragment.Container] with FragmentHel
   }
 }
 
-object ConvFragment {
-  val TAG = ConvFragment.getClass.getName
+object ConversationFragment {
+  val TAG = ConversationFragment.getClass.getName
   val SAVED_STATE_PREVIEW = "SAVED_STATE_PREVIEW"
   val REQUEST_VIDEO_CAPTURE = 911
   val CAMERA_PERMISSION_REQUEST_ID = 21
@@ -906,7 +927,7 @@ object ConvFragment {
   val AUDIO_PERMISSION_REQUEST_ID = 864
   val AUDIO_FILTER_PERMISSION_REQUEST_ID = 865
 
-  def apply() = new ConvFragment
+  def apply() = new ConversationFragment
 
   trait Container {
 

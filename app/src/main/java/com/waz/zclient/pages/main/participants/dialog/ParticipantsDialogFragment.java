@@ -42,7 +42,10 @@ import com.waz.api.Message;
 import com.waz.api.OtrClient;
 import com.waz.api.User;
 import com.waz.api.UsersList;
-import com.waz.zclient.BaseActivity;
+import com.waz.model.ConvId;
+import com.waz.model.ConversationData;
+import com.waz.model.UserData;
+import com.waz.model.UserId;
 import com.waz.zclient.OnBackPressedListener;
 import com.waz.zclient.R;
 import com.waz.zclient.controllers.accentcolor.AccentColorObserver;
@@ -52,6 +55,7 @@ import com.waz.zclient.controllers.confirmation.IConfirmationController;
 import com.waz.zclient.controllers.globallayout.KeyboardHeightObserver;
 import com.waz.zclient.controllers.tracking.events.group.AddedMemberToGroupEvent;
 import com.waz.zclient.controllers.tracking.events.group.CreatedGroupConversationEvent;
+import com.waz.zclient.conversation.ConversationController;
 import com.waz.zclient.core.stores.connect.IConnectStore;
 import com.waz.zclient.core.stores.conversation.ConversationChangeRequester;
 import com.waz.zclient.core.stores.participants.ParticipantsStoreObserver;
@@ -73,10 +77,13 @@ import com.waz.zclient.ui.animation.HeightEvaluator;
 import com.waz.zclient.ui.animation.interpolators.penner.Quart;
 import com.waz.zclient.ui.utils.KeyboardUtils;
 import com.waz.zclient.ui.utils.MathUtils;
+import com.waz.zclient.utils.Callback;
 import com.waz.zclient.utils.ViewUtils;
 import com.waz.zclient.views.LoadingIndicatorView;
 import com.waz.zclient.views.menus.ConfirmationMenu;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogFragment.Container> implements
@@ -373,16 +380,10 @@ public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogF
                 }
             }
             if (getArguments().getBoolean(ARG__ADD_TO_CONVERSATION)) {
-
-                IConversation currentConversation = getStoreFactory() != null &&
-                    !getStoreFactory().isTornDown() ?
-                    getStoreFactory().conversationStore().getCurrentConversation() : null;
-                String conversationId = currentConversation == null ? null : currentConversation.getId();
-
                 transaction.replace(R.id.fl__participant_dialog__main__container,
                                     PickUserFragment.newInstance(true,
                                                                  getArguments().getBoolean(ARG__GROUP_CONVERSATION),
-                                                                 conversationId),
+                                                                 inject(ConversationController.class).getSelectedConvId().str()),
                                     PickUserFragment.TAG());
 
             } else if (getControllerFactory().getConversationScreenController().getPopoverLaunchMode() == DialogLaunchMode.PARTICIPANT_BUTTON ||
@@ -602,7 +603,9 @@ public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogF
             getControllerFactory().getConversationScreenController().getPopoverLaunchMode() == DialogLaunchMode.CONVERSATION_TOOLBAR)) {
             return;
         }
-        updateGroupDialogBackground(conversation);
+
+        if (conversation != null) updateGroupDialogBackground(new ConvId(conversation.getId()));
+        else updateGroupDialogBackground(null);
     }
 
     @Override
@@ -725,20 +728,26 @@ public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogF
             if (fragment instanceof ConversationScreenControllerObserver) {
                 ((ConversationScreenControllerObserver) fragment).onHideUser();
             }
-            updateGroupDialogBackground(getStoreFactory().conversationStore().getCurrentConversation());
+
+            updateGroupDialogBackground(inject(ConversationController.class).getSelectedConvId());
         } else {
             setVisible(false);
         }
     }
 
-    private void updateGroupDialogBackground(IConversation conversation) {
-        if (conversation == null) {
+    private void updateGroupDialogBackground(final ConvId convId) {
+        if (convId == null) {
             getControllerFactory().getDialogBackgroundImageController().setImageAsset(null, false);
-            return;
+        } else {
+            inject(ConversationController.class).withConvLoaded(convId, new Callback<ConversationData>() {
+                @Override
+                public void callback(ConversationData currentConv) {
+                    boolean blurred = currentConv.convType() == IConversation.Type.GROUP &&
+                        getControllerFactory().getConversationScreenController().getPopoverLaunchMode() == DialogLaunchMode.PARTICIPANT_BUTTON;
+                    getControllerFactory().getDialogBackgroundImageController().setImageAsset(ConversationController.emptyImageAsset(), blurred);
+                }
+            });
         }
-        boolean blurred = conversation.getType() == IConversation.Type.GROUP &&
-                          getControllerFactory().getConversationScreenController().getPopoverLaunchMode() == DialogLaunchMode.PARTICIPANT_BUTTON;
-        getControllerFactory().getDialogBackgroundImageController().setImageAsset(conversation.getBackground(), blurred);
     }
 
     @Override
@@ -750,7 +759,7 @@ public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogF
     }
 
     @Override
-    public void onShowConversationMenu(@IConversationScreenController.ConversationMenuRequester int requester, IConversation conversation, View anchorView) {
+    public void onShowConversationMenu(@IConversationScreenController.ConversationMenuRequester int requester, ConvId convId, View anchorView) {
         if (requester != IConversationScreenController.USER_PROFILE_PARTICIPANTS &&
             requester != IConversationScreenController.CONVERSATION_DETAILS) {
             return;
@@ -758,7 +767,7 @@ public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogF
         Fragment fragment = getChildFragmentManager().findFragmentByTag(ParticipantFragment.TAG);
         if (fragment instanceof ConversationScreenControllerObserver) {
             ((ConversationScreenControllerObserver) fragment).onShowConversationMenu(requester,
-                                                                                     conversation,
+                convId,
                                                                                      anchorView);
         }
     }
@@ -1033,32 +1042,49 @@ public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogF
     }
 
     @Override
-    public void onSelectedUsers(List<User> users, ConversationChangeRequester requester) {
+    public void onSelectedUsers(List<User> users, final ConversationChangeRequester requester) {
         // TODO https://wearezeta.atlassian.net/browse/AN-3730
         getControllerFactory().getPickUserController().hidePickUser(getCurrentPickerDestination(), false);
 
-        IConversation currentConversation = getStoreFactory().conversationStore().getCurrentConversation();
-        if (currentConversation.getType() == IConversation.Type.ONE_TO_ONE) {
-            getStoreFactory().conversationStore().createGroupConversation(users, requester);
-            if (!getStoreFactory().networkStore().hasInternetConnection()) {
-                ViewUtils.showAlertDialog(getActivity(),
-                                          R.string.conversation__create_group_conversation__no_network__title,
-                                          R.string.conversation__create_group_conversation__no_network__message,
-                                          R.string.conversation__create_group_conversation__no_network__button,
-                                          null, true);
+        final ConversationController ctrl = inject(ConversationController.class);
+
+        final List<UserId> userIds = new ArrayList<>(users.size());
+        for (User user: users) userIds.add(new UserId(user.getId()));
+
+        ctrl.withSelectedConv(new Callback<ConversationData>() {
+            @Override
+            public void callback(ConversationData conv) {
+                if (conv.convType() == IConversation.Type.ONE_TO_ONE) {
+                    ctrl.createGroupConversation(userIds, requester);
+                    if (!getStoreFactory().networkStore().hasInternetConnection()) {
+                        ViewUtils.showAlertDialog(getActivity(),
+                            R.string.conversation__create_group_conversation__no_network__title,
+                            R.string.conversation__create_group_conversation__no_network__message,
+                            R.string.conversation__create_group_conversation__no_network__button,
+                            null, true);
+                    }
+                    inject(GlobalTrackingController.class).tagEvent(new CreatedGroupConversationEvent(true, (userIds.size() + 1)));
+                } else if (conv.convType() == IConversation.Type.GROUP) {
+                    ctrl.addMembers(conv.id(), userIds);
+                    if (!getStoreFactory().networkStore().hasInternetConnection()) {
+                        ViewUtils.showAlertDialog(getActivity(),
+                            R.string.conversation__add_user__no_network__title,
+                            R.string.conversation__add_user__no_network__message,
+                            R.string.conversation__add_user__no_network__button,
+                            null, true);
+                    }
+
+                    ctrl.withCurrentConvMembers(new Callback<Collection<UserData>>() {
+                        @Override
+                        public void callback(Collection<UserData> members) {
+
+                            inject(GlobalTrackingController.class).tagEvent(new AddedMemberToGroupEvent(members.size(), userIds.size()));
+                        }
+                    });
+                }
             }
-            ((BaseActivity) getActivity()).injectJava(GlobalTrackingController.class).tagEvent(new CreatedGroupConversationEvent(true, (users.size() + 1)));
-        } else if (currentConversation.getType() == IConversation.Type.GROUP) {
-            currentConversation.addMembers(users);
-            if (!getStoreFactory().networkStore().hasInternetConnection()) {
-                ViewUtils.showAlertDialog(getActivity(),
-                                          R.string.conversation__add_user__no_network__title,
-                                          R.string.conversation__add_user__no_network__message,
-                                          R.string.conversation__add_user__no_network__button,
-                                          null, true);
-            }
-            ((BaseActivity) getActivity()).injectJava(GlobalTrackingController.class).tagEvent(new AddedMemberToGroupEvent(getParticipantsCount(), users.size()));
-        }
+        });
+
         hide();
     }
 
@@ -1070,10 +1096,6 @@ public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogF
     @Override
     public IPickUserController.Destination getCurrentPickerDestination() {
         return IPickUserController.Destination.CURSOR;
-    }
-
-    private int getParticipantsCount() {
-        return getStoreFactory().conversationStore().getCurrentConversation().getUsers().size();
     }
 
     public interface Container {

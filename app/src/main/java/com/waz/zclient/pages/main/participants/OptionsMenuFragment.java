@@ -29,10 +29,14 @@ import com.waz.api.IConversation;
 import com.waz.api.SyncState;
 import com.waz.api.UpdateListener;
 import com.waz.api.User;
+import com.waz.model.ConvId;
+import com.waz.model.ConversationData;
+import com.waz.model.UserId;
 import com.waz.zclient.BaseActivity;
 import com.waz.zclient.OnBackPressedListener;
 import com.waz.zclient.R;
 import com.waz.zclient.controllers.ThemeController;
+import com.waz.zclient.conversation.ConversationController;
 import com.waz.zclient.core.stores.conversation.ConversationChangeRequester;
 import com.waz.zclient.core.stores.conversation.ConversationStoreObserver;
 import com.waz.zclient.core.stores.singleparticipants.SingleParticipantStoreObserver;
@@ -42,6 +46,7 @@ import com.waz.zclient.tracking.GlobalTrackingController;
 import com.waz.zclient.ui.optionsmenu.OptionsMenu;
 import com.waz.zclient.ui.optionsmenu.OptionsMenuItem;
 import com.waz.zclient.ui.theme.OptionsTheme;
+import com.waz.zclient.utils.Callback;
 import com.waz.zclient.utils.TrackingUtils;
 import com.waz.zclient.utils.ViewUtils;
 
@@ -49,7 +54,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class OptionsMenuFragment extends BaseFragment<OptionsMenuFragment.Container> implements SingleParticipantStoreObserver,
-                                                                                                ConversationStoreObserver,
                                                                                                 OptionsMenuControl.Callback,
                                                                                                 OptionsMenu.Callback {
     public static final String TAG = OptionsMenuFragment.class.getName();
@@ -58,8 +62,9 @@ public class OptionsMenuFragment extends BaseFragment<OptionsMenuFragment.Contai
     private static final String ARGUMENT_WIRE_THEME = "ARGUMENT_WIRE_THEME";
     private OptionsMenu optionsMenu;
     private @IConversationScreenController.ConversationMenuRequester int requester;
-    private IConversation conversation;
     private User user;
+
+    private OptionsMenuController ctrl;
 
     private boolean inConversationList;
     private OptionsTheme optionsTheme;
@@ -114,23 +119,18 @@ public class OptionsMenuFragment extends BaseFragment<OptionsMenuFragment.Contai
     public void onStart() {
         super.onStart();
 
-        getStoreFactory().conversationStore().addConversationStoreObserver(this);
+        ctrl = inject(OptionsMenuController.class);
+        ctrl.onMenuConversationHasChanged(new Callback<ConversationData>() {
+            @Override
+            public void callback(ConversationData conversationData) {
+                onMenuConversationHasChanged(conversationData);
+            }
+        });
 
         String conversationId = getArguments().getString(ARGUMENT_CONVERSATION_ID);
 
         if (!TextUtils.isEmpty(conversationId)) {
-            getStoreFactory()
-                .zMessagingApiStore()
-                .getApi()
-                .getConversations()
-                .getConversation(conversationId,
-                                 new ConversationsList.ConversationCallback() {
-                                     @Override
-                                     public void onConversationsFound(Iterable<IConversation> iterable) {
-                                         // use only the first one
-                                         connectConversation(iterable.iterator().next());
-                                     }
-                                 });
+            connectConversation(new ConvId(conversationId));
             getStoreFactory().conversationStore().loadMenuConversation(conversationId);
         }
 
@@ -148,11 +148,13 @@ public class OptionsMenuFragment extends BaseFragment<OptionsMenuFragment.Contai
         super.onSaveInstanceState(outState);
         outState.putInt(ARGUMENT_WIRE_THEME, optionsTheme.getType().ordinal());
 
-        if (conversation != null) {
-            getArguments().putString(ARGUMENT_CONVERSATION_ID, conversation.getId());
-        } else {
-            getArguments().putString(ARGUMENT_CONVERSATION_ID, "");
-        }
+        ctrl.withConvId(new Callback<ConvId>() {
+            @Override
+            public void callback(ConvId convId) {
+                getArguments().putString(ARGUMENT_CONVERSATION_ID, convId != null? convId.str():"");
+            }
+        });
+
     }
 
     @Override
@@ -164,79 +166,53 @@ public class OptionsMenuFragment extends BaseFragment<OptionsMenuFragment.Contai
     @Override
     public void onStop() {
         getContainer().getOptionsMenuControl().setCallback(null);
-        getStoreFactory().conversationStore().removeConversationStoreObserver(this);
         getStoreFactory().singleParticipantStore().removeSingleParticipantObserver(this);
         disconnectConversation();
         disconnectUser();
         super.onStop();
     }
 
-    //////////////////////////////////////////////////////////////////////////////////////////
-    //
-    //  ConversationStoreStoreObserver
-    //
-    //////////////////////////////////////////////////////////////////////////////////////////
 
-    @Override
-    public void onConversationListUpdated(@NonNull ConversationsList conversationsList) {
-
-    }
-
-    @Override
-    public void onCurrentConversationHasChanged(IConversation fromConversation,
-                                                IConversation toConversation,
-                                                ConversationChangeRequester conversationChangerSender) {
-
-    }
-
-    @Override
-    public void onConversationSyncingStateHasChanged(SyncState syncState) {
-
-    }
-
-    @Override
-    public void onMenuConversationHasChanged(final IConversation conversation) {
+    private void onMenuConversationHasChanged(ConversationData conv) {
         List<OptionsMenuItem> items = new ArrayList<>();
-        switch (conversation.getType()) {
-            case GROUP:
-                if (conversation.isMemberOfConversation()) {
-                    // silence/unsilence
-                    if (conversation.isMuted()) {
-                        items.add(OptionsMenuItem.UNSILENCE);
-                    } else {
-                        items.add(OptionsMenuItem.SILENCE);
-                    }
 
-                    if (inConversationList) {
-                        items.add(OptionsMenuItem.CALL);
-                        items.add(OptionsMenuItem.PICTURE);
-                    } else { //in ParticipantsFragment
-                        items.add(OptionsMenuItem.RENAME);
-                    }
-                }
-
-                // archive
-                if (conversation.isArchived()) {
-                    items.add(OptionsMenuItem.UNARCHIVE);
+        if (conv.convType() == IConversation.Type.GROUP) {
+            if (conv.isActive()) {
+                // silence/unsilence
+                if (conv.muted()) {
+                    items.add(OptionsMenuItem.UNSILENCE);
                 } else {
-                    items.add(OptionsMenuItem.ARCHIVE);
+                    items.add(OptionsMenuItem.SILENCE);
                 }
 
-                items.add(OptionsMenuItem.DELETE);
-
-                // leave
-                if (conversation.isMemberOfConversation()) {
-                    items.add(OptionsMenuItem.LEAVE);
+                if (inConversationList) {
+                    items.add(OptionsMenuItem.CALL);
+                    items.add(OptionsMenuItem.PICTURE);
+                } else { //in ParticipantsFragment
+                    items.add(OptionsMenuItem.RENAME);
                 }
-                optionsMenu.setMenuItems(items, optionsTheme);
-                break;
-            case ONE_TO_ONE:
-                items.add(OptionsMenuItem.CALL);
-                items.add(OptionsMenuItem.PICTURE);
-                connectUser(conversation.getOtherParticipant());
-                break;
-            case WAIT_FOR_CONNECTION:
-                connectUser(conversation.getOtherParticipant());
+            }
+
+            // archive
+            if (conv.archived()) {
+                items.add(OptionsMenuItem.UNARCHIVE);
+            } else {
+                items.add(OptionsMenuItem.ARCHIVE);
+            }
+
+            items.add(OptionsMenuItem.DELETE);
+
+            // leave
+            if (conv.isActive()) {
+                items.add(OptionsMenuItem.LEAVE);
+            }
+            optionsMenu.setMenuItems(items, optionsTheme);
+        } else if (conv.convType() == IConversation.Type.ONE_TO_ONE) {
+            items.add(OptionsMenuItem.CALL);
+            items.add(OptionsMenuItem.PICTURE);
+            connectUser(ctrl.getOtherParticipant(conv.id()));
+        } else if (conv.convType() == IConversation.Type.WAIT_FOR_CONNECTION) {
+            connectUser(ctrl.getOtherParticipant(conv.id()));
         }
     }
 
@@ -248,50 +224,54 @@ public class OptionsMenuFragment extends BaseFragment<OptionsMenuFragment.Contai
 
     @Override
     public void onUserUpdated(final User user) {
-        if (user == null ||
-            conversation == null) {
+        if (user == null) {
             return;
         }
-        List<OptionsMenuItem> items = new ArrayList<>();
 
-        switch (user.getConnectionStatus()) {
-            case ACCEPTED:
-            case BLOCKED:
-                if (conversation.isMuted()) {
-                    items.add(OptionsMenuItem.UNSILENCE);
-                } else {
-                    items.add(OptionsMenuItem.SILENCE);
+        ctrl.withConv(new Callback<ConversationData>() {
+            @Override
+            public void callback(ConversationData conv) {
+                final List<OptionsMenuItem> items = new ArrayList<>();
+                switch (user.getConnectionStatus()) {
+                    case ACCEPTED:
+                    case BLOCKED:
+                        if (conv.muted()) {
+                            items.add(OptionsMenuItem.UNSILENCE);
+                        } else {
+                            items.add(OptionsMenuItem.SILENCE);
+                        }
+                        break;
                 }
-                break;
-        }
 
-        if (requester != IConversationScreenController.USER_PROFILE_SEARCH &&
-            requester != IConversationScreenController.USER_PROFILE_PARTICIPANTS) {
-            if (conversation.isArchived()) {
-                items.add(OptionsMenuItem.UNARCHIVE);
-            } else {
-                items.add(OptionsMenuItem.ARCHIVE);
+                if (requester != IConversationScreenController.USER_PROFILE_SEARCH &&
+                    requester != IConversationScreenController.USER_PROFILE_PARTICIPANTS) {
+                    if (conv.archived()) {
+                        items.add(OptionsMenuItem.UNARCHIVE);
+                    } else {
+                        items.add(OptionsMenuItem.ARCHIVE);
+                    }
+                }
+
+                switch (user.getConnectionStatus()) {
+                    case ACCEPTED:
+                        items.add(OptionsMenuItem.DELETE);
+                        items.add(OptionsMenuItem.BLOCK);
+                        if (inConversationList) {
+                            items.add(OptionsMenuItem.CALL);
+                            items.add(OptionsMenuItem.PICTURE);
+                        }
+                        break;
+                    case BLOCKED:
+                        items.add(OptionsMenuItem.UNBLOCK);
+                        break;
+                    case PENDING_FROM_USER:
+                        items.add(OptionsMenuItem.BLOCK);
+                        break;
+                }
+
+                optionsMenu.setMenuItems(items, optionsTheme);
             }
-        }
-
-        switch (user.getConnectionStatus()) {
-            case ACCEPTED:
-                items.add(OptionsMenuItem.DELETE);
-                items.add(OptionsMenuItem.BLOCK);
-                if (inConversationList) {
-                    items.add(OptionsMenuItem.CALL);
-                    items.add(OptionsMenuItem.PICTURE);
-                }
-                break;
-            case BLOCKED:
-                items.add(OptionsMenuItem.UNBLOCK);
-                break;
-            case PENDING_FROM_USER:
-                items.add(OptionsMenuItem.BLOCK);
-                break;
-        }
-
-        optionsMenu.setMenuItems(items, optionsTheme);
+        });
     }
 
     @Override
@@ -300,19 +280,29 @@ public class OptionsMenuFragment extends BaseFragment<OptionsMenuFragment.Contai
     }
 
     @Override
-    public void onOptionsMenuItemClicked(OptionsMenuItem optionsMenuItem) {
-        getContainer().onOptionsItemClicked(conversation, user, optionsMenuItem);
+    public void onOptionsMenuItemClicked(final OptionsMenuItem optionsMenuItem) {
+        ctrl.withConvId(new Callback<ConvId>() {
+            @Override
+            public void callback(ConvId convId) {
+                getContainer().onOptionsItemClicked(convId, user, optionsMenuItem);
+            }
+        });
 
         if (getControllerFactory() == null ||
             getControllerFactory().isTornDown()) {
             return;
         }
-        TrackingUtils.tagOptionsMenuSelectedEvent(((BaseActivity) getActivity()).injectJava(GlobalTrackingController.class),
-                                                  optionsMenuItem,
-                                                  conversation.getType(),
-                                                  inConversationList,
-                                                  (requester == IConversationScreenController.CONVERSATION_LIST_SWIPE));
 
+        ctrl.withConv(new Callback<ConversationData>() {
+            @Override
+            public void callback(ConversationData conv) {
+                TrackingUtils.tagOptionsMenuSelectedEvent(inject(GlobalTrackingController.class),
+                    optionsMenuItem,
+                    conv.convType(),
+                    inConversationList,
+                    (requester == IConversationScreenController.CONVERSATION_LIST_SWIPE));
+            }
+        });
     }
 
     @Override
@@ -331,31 +321,31 @@ public class OptionsMenuFragment extends BaseFragment<OptionsMenuFragment.Contai
     }
 
     @Override
-    public void onCreateMenu(IConversation conversation,
+    public void onCreateMenu(ConvId convId,
                              @IConversationScreenController.ConversationMenuRequester int requester,
                              OptionsTheme optionsTheme) {
         this.optionsTheme = optionsTheme;
         this.requester = requester;
-        connectConversation(conversation);
+        connectConversation(convId);
     }
 
-    private void connectConversation(IConversation conversation) {
-        this.conversation = conversation;
-        this.conversation.addUpdateListener(conversationUpdateListener);
-        conversationUpdateListener.updated();
-        optionsMenu.setTitle(conversation.getName());
-        optionsMenu.setConversationDetails(conversation);
+    private void connectConversation(ConvId convId) {
+        ctrl.setConversationId(convId);
+        ctrl.withConv(new Callback<ConversationData>() {
+            @Override
+            public void callback(ConversationData conversationData) {
+                optionsMenu.setTitle(conversationData.displayName());
+                optionsMenu.setConversationDetails(conversationData);
+            }
+        });
     }
 
     private void disconnectConversation() {
-        if (this.conversation != null) {
-            this.conversation.removeUpdateListener(conversationUpdateListener);
-            this.conversation = null;
-        }
+        ctrl.setConversationId(null);
     }
 
-    private void connectUser(User user) {
-        this.user = user;
+    private void connectUser(UserId userId) {
+        this.user = getUser(userId);
         this.user.addUpdateListener(userUpdateListener);
         userUpdateListener.updated();
     }
@@ -376,21 +366,17 @@ public class OptionsMenuFragment extends BaseFragment<OptionsMenuFragment.Contai
         }
     };
 
-    private UpdateListener conversationUpdateListener = new UpdateListener() {
-        @Override
-        public void updated() {
-            if (conversation != null) {
-                onMenuConversationHasChanged(conversation);
-            }
-        }
-    };
+    private User getUser(UserId id) {
+        return getStoreFactory().zMessagingApiStore().getApi().getUser(id.str());
+    }
 
     public interface Container extends OnBackPressedListener {
 
         void onOptionMenuStateHasChanged(OptionsMenu.State state);
 
-        void onOptionsItemClicked(IConversation conversation, User user, OptionsMenuItem item);
+        void onOptionsItemClicked(ConvId convId, User user, OptionsMenuItem item);
 
         OptionsMenuControl getOptionsMenuControl();
     }
+
 }

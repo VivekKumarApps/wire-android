@@ -104,7 +104,7 @@
                 android:clipToPadding="false"
                 />
 
-            <com.waz.zclient.views.TypingIndicatorView
+            <com.waz.zclient.conversation.TypingIndicatorView
                 android:id="@+id/tiv_typing_indicator_view"
                 android:layout_width="match_parent"
                 android:layout_height="@dimen/typing_indicator_layout_height"

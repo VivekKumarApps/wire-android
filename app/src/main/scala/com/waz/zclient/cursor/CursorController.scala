@@ -281,7 +281,7 @@ object CursorController {
   def keyboardPermissions(tpe: ExtendedCursorContainer.Type) = KeyboardPermissions.getOrElse(tpe, Seq.empty)
 }
 
-// temporary for compatibility with ConversationFragment
+// temporary for compatibility with OldConversationFragment
 trait CursorCallback {
   def openExtendedCursor(tpe: ExtendedCursorContainer.Type): Unit
   def hideExtendedCursor(): Unit

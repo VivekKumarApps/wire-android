@@ -52,7 +52,7 @@ public class AudioRecordingTest extends FragmentTest<MainTestActivity> {
         when(mockConversation.isActive()).thenReturn(true);
 
         MockHelper.setupConversationMocks(mockConversation, activity);
-        attachFragment(ConversationFragment.newInstance(), ConversationFragment.TAG);
+        attachFragment(OldConversationFragment.newInstance(), OldConversationFragment.TAG);
 
         onView(withId(R.id.cursor_menu_item_audio_message)).check(isVisible());
         onView(withId(R.id.cursor_menu_item_audio_message)).perform(ViewActions.longClick());
@@ -69,7 +69,7 @@ public class AudioRecordingTest extends FragmentTest<MainTestActivity> {
         when(mockConversation.isActive()).thenReturn(true);
 
         MockHelper.setupConversationMocks(mockConversation, activity);
-        attachFragment(ConversationFragment.newInstance(), ConversationFragment.TAG);
+        attachFragment(OldConversationFragment.newInstance(), OldConversationFragment.TAG);
 
         onView(withId(R.id.cursor_menu_item_audio_message)).check(isVisible());
         onView(withId(R.id.cursor_menu_item_audio_message)).perform(ViewActions.longClick());
@@ -86,7 +86,7 @@ public class AudioRecordingTest extends FragmentTest<MainTestActivity> {
         when(mockConversation.isActive()).thenReturn(true);
 
         MockHelper.setupConversationMocks(mockConversation, activity);
-        attachFragment(ConversationFragment.newInstance(), ConversationFragment.TAG);
+        attachFragment(OldConversationFragment.newInstance(), OldConversationFragment.TAG);
 
         onView(withId(R.id.cursor_menu_item_audio_message)).check(isVisible());
         onView(withId(R.id.cursor_menu_item_audio_message)).perform(ViewActions.longClick());
@@ -115,7 +115,7 @@ public class AudioRecordingTest extends FragmentTest<MainTestActivity> {
         }).when(mockInAppNotificationStore).addInAppNotificationObserver(any(SyncErrorObserver.class));
 
         // attach fragment
-        attachFragment(ConversationFragment.newInstance(), ConversationFragment.TAG);
+        attachFragment(OldConversationFragment.newInstance(), OldConversationFragment.TAG);
 
         onView(withText(activity.getString(R.string.audio_message__recording__failure__title))).check(isVisible());
     }

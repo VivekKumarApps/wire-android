@@ -77,8 +77,7 @@ trait IConversationStore extends IStore {
    * @param conversationChangerSender
    */
   def setCurrentConversation(conversation: Option[IConversation], conversationChangerSender: ConversationChangeRequester): Unit // for Scala
-  def setCurrentConversation(conversation: IConversation, conversationChangerSender: ConversationChangeRequester): Unit = // for Java
-    setCurrentConversation(Option(conversation), conversationChangerSender)
+
   /**
    * Same as calling {@code setCurrentConversation(getNextConversation())}
    * @param requester

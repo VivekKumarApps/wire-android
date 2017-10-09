@@ -30,7 +30,7 @@ import com.localytics.android.Localytics
 import com.waz.ZLog.ImplicitTag._
 import com.waz.ZLog.{error, info, verbose, warn}
 import com.waz.api.{NetworkMode, _}
-import com.waz.model.{AccountId, ConvId}
+import com.waz.model.{AccountId, ConvId, ConversationData}
 import com.waz.service.ZMessaging
 import com.waz.service.ZMessaging.clock
 import com.waz.threading.{CancellableFuture, Threading}
@@ -330,10 +330,10 @@ class MainActivity extends BaseActivity
     def switchConversation(convId: ConvId, call: Boolean = false, exp: EphemeralExpiration = EphemeralExpiration.NONE) =
       CancellableFuture.delay(750.millis).map { _ =>
         verbose(s"setting conversation: $convId")
-        val conv = getStoreFactory.conversationStore.getConversation(convId.str)
-        conv.setEphemeralExpiration(exp)
-        getStoreFactory.conversationStore.setCurrentConversation(conv, ConversationChangeRequester.INTENT)
-        if (call) startCall(withVideo = false, Option(conv))
+        conversationController.selectConv(convId, ConversationChangeRequester.INTENT).map { _ =>
+          conversationController.setEphemeralExpiration(exp)
+          if (call) conversationController.withSelectedConv { conv => startCall(withVideo = false, conv) }
+        }
     } (Threading.Ui).future
 
     def clearIntent() = {
@@ -467,7 +467,8 @@ class MainActivity extends BaseActivity
 
   def onConnectUserUpdated(user: User, usertype: IConnectStore.UserRequester) = ()
 
-  def onInviteRequestSent(conversation: IConversation) = getStoreFactory.conversationStore.setCurrentConversation(Some(conversation), ConversationChangeRequester.INVITE)
+  def onInviteRequestSent(conversation: IConversation) =
+    conversationController.selectConv(Option(new ConvId(conversation.getId)), ConversationChangeRequester.INVITE)
 
   def onOpenUrl(url: String) = {
     try {
@@ -509,35 +510,32 @@ class MainActivity extends BaseActivity
 
   def onInitialized(self: Self) = enterApplication(self)
 
-  def onStartCall(withVideo: Boolean) = {
-    val conversation = getStoreFactory.conversationStore.currentConversation
-    handleOnStartCall(withVideo, conversation)
-    conversation.foreach { conv =>
-      globalTracking.tagEvent(OpenedMediaActionEvent.cursorAction(if (withVideo) OpenedMediaAction.VIDEO_CALL else OpenedMediaAction.AUDIO_CALL, conv))
-    }
+  def onStartCall(withVideo: Boolean) = conversationController.withSelectedConv { conv =>
+    handleOnStartCall(withVideo, conv)
+    globalTracking.tagEvent(OpenedMediaActionEvent.cursorAction(if (withVideo) OpenedMediaAction.VIDEO_CALL else OpenedMediaAction.AUDIO_CALL, conv, false))
   }
 
-  private def handleOnStartCall(withVideo: Boolean, conversation: Option[IConversation]) = {
+  private def handleOnStartCall(withVideo: Boolean, conversation: ConversationData) = {
     if (PhoneUtils.getPhoneState(this) ne PhoneState.IDLE) cannotStartGSM()
     else startCallIfInternet(withVideo, conversation)
   }
 
-  private def startCall(withVideo: Boolean, conversation: Option[IConversation]): Unit = conversation.foreach {
-    case c if c.getType == IConversation.Type.GROUP && c.getUsers.size() >= 5 =>
-      ViewUtils.showAlertDialog(
+  private def startCall(withVideo: Boolean, c: ConversationData): Unit = {
+    def call() = callPermissionController.startCall(c.id, withVideo, getControllerFactory.getUserPreferencesController.isVariableBitRateEnabled)
+
+    if (c.convType == ConversationData.ConversationType.Group) conversationController.loadMembers(c.id).foreach { members =>
+      if (members.size > 5) ViewUtils.showAlertDialog(
         this,
         getString(R.string.group_calling_title),
-        getString(R.string.group_calling_message, Integer.valueOf(c.getUsers.size())),
+        getString(R.string.group_calling_message, Integer.valueOf(members.size)),
         getString(R.string.group_calling_confirm),
         getString(R.string.group_calling_cancel),
         new DialogInterface.OnClickListener() {
-          def onClick(dialog: DialogInterface, which: Int) = {
-            callPermissionController.startCall(new ConvId(c.getId), withVideo, getControllerFactory.getUserPreferencesController.isVariableBitRateEnabled)
-          }
-      }, null)
-
-    case c =>
-      callPermissionController.startCall(new ConvId(c.getId), withVideo, getControllerFactory.getUserPreferencesController.isVariableBitRateEnabled)
+          def onClick(dialog: DialogInterface, which: Int) = call()
+        }, null
+      ) else call()
+    }
+    else call()
   }
 
   private def cannotStartGSM() =
@@ -549,7 +547,7 @@ class MainActivity extends BaseActivity
       null,
       true)
 
-  private def startCallIfInternet(withVideo: Boolean, conversation: Option[IConversation]) = {
+  private def startCallIfInternet(withVideo: Boolean, conversation: ConversationData) = {
     zms.flatMap(_.network.networkMode).head.map {
       case NetworkMode.OFFLINE =>
         ViewUtils.showAlertDialog(

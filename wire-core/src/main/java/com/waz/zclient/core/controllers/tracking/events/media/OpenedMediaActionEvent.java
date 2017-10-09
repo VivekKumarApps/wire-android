@@ -28,11 +28,6 @@ import com.waz.zclient.core.controllers.tracking.events.Event;
 public class OpenedMediaActionEvent extends Event {
 
     public static OpenedMediaActionEvent cursorAction(OpenedMediaAction action,
-                                                      IConversation conversation) {
-        return new OpenedMediaActionEvent(action, ConversationType.getValue(conversation.getType()), conversation.isOtto(), "");
-    }
-
-    public static OpenedMediaActionEvent cursorAction(OpenedMediaAction action,
                                                       ConversationData conversation,
                                                       boolean isOtto) {
         return new OpenedMediaActionEvent(action, ConversationType.getValue(conversation.convType()), isOtto, "");

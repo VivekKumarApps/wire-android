@@ -28,6 +28,7 @@ import android.widget.TextView;
 import com.waz.api.NetworkMode;
 import com.waz.api.User;
 import com.waz.api.Verification;
+import com.waz.model.ConvId;
 import com.waz.zclient.BaseActivity;
 import com.waz.zclient.OnBackPressedListener;
 import com.waz.zclient.R;
@@ -39,6 +40,7 @@ import com.waz.zclient.controllers.confirmation.IConfirmationController;
 import com.waz.zclient.controllers.confirmation.TwoButtonConfirmationCallback;
 import com.waz.zclient.controllers.navigation.NavigationController;
 import com.waz.zclient.controllers.tracking.events.connect.BlockingEvent;
+import com.waz.zclient.conversation.ConversationController;
 import com.waz.zclient.core.stores.connect.IConnectStore;
 import com.waz.zclient.core.stores.conversation.ConversationChangeRequester;
 import com.waz.zclient.core.stores.network.NetworkAction;
@@ -312,8 +314,7 @@ public class SingleParticipantFragment extends BaseFragment<SingleParticipantFra
                     // Go to conversation with this user
                     goToConversationWithUser = true;
                     getContainer().dismissUserProfile();
-                    getStoreFactory().conversationStore().setCurrentConversation(user.getConversation(),
-                                                                                    ConversationChangeRequester.START_CONVERSATION);
+                    inject(ConversationController.class).selectConv(new ConvId(user.getConversation().getId()), ConversationChangeRequester.START_CONVERSATION);
                 }
 
                 @Override

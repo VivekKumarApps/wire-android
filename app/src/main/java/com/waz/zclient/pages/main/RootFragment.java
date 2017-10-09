@@ -42,6 +42,8 @@ import com.waz.api.MessageContent;
 import com.waz.api.OtrClient;
 import com.waz.api.SyncState;
 import com.waz.api.User;
+import com.waz.model.ConvId;
+import com.waz.model.ConversationData;
 import com.waz.model.MessageData;
 import com.waz.zclient.BaseActivity;
 import com.waz.zclient.OnBackPressedListener;
@@ -58,6 +60,7 @@ import com.waz.zclient.controllers.navigation.PagerControllerObserver;
 import com.waz.zclient.controllers.usernames.UsernamesControllerObserver;
 import com.waz.zclient.conversation.CollectionController;
 import com.waz.zclient.conversation.CollectionFragment;
+import com.waz.zclient.conversation.ConversationController;
 import com.waz.zclient.core.api.scala.ModelObserver;
 import com.waz.zclient.core.controllers.tracking.events.media.SentPictureEvent;
 import com.waz.zclient.core.stores.connect.IConnectStore;
@@ -66,7 +69,6 @@ import com.waz.zclient.core.stores.conversation.ConversationStoreObserver;
 import com.waz.zclient.pages.BaseFragment;
 import com.waz.zclient.pages.main.connect.ConnectRequestLoadMode;
 import com.waz.zclient.pages.main.connect.PendingConnectRequestManagerFragment;
-import com.waz.zclient.pages.main.conversation.ConversationFragment;
 import com.waz.zclient.pages.main.conversation.LocationFragment;
 import com.waz.zclient.pages.main.conversation.controller.ConversationScreenControllerObserver;
 import com.waz.zclient.pages.main.conversation.controller.IConversationScreenController;
@@ -86,10 +88,12 @@ import com.waz.zclient.tracking.GlobalTrackingController;
 import com.waz.zclient.ui.animation.interpolators.penner.Quart;
 import com.waz.zclient.ui.utils.KeyboardUtils;
 import com.waz.zclient.ui.utils.MathUtils;
+import com.waz.zclient.utils.Callback;
 import com.waz.zclient.utils.LayoutSpec;
 import com.waz.zclient.utils.TrackingUtils;
 import com.waz.zclient.utils.ViewUtils;
 
+import com.waz.zclient.views.ConversationFragment;
 import timber.log.Timber;
 
 
@@ -319,8 +323,8 @@ public class RootFragment extends BaseFragment<RootFragment.Container> implement
                     case ONE_TO_ONE:
                     default:
                         page = Page.MESSAGE_STREAM;
-                        fragment = ConversationFragment.newInstance();
-                        tag = ConversationFragment.TAG;
+                        fragment = ConversationFragment.apply();
+                        tag = ConversationFragment.TAG();
                         break;
                 }
                 openMessageStream(page, fragment, tag);
@@ -424,7 +428,7 @@ public class RootFragment extends BaseFragment<RootFragment.Container> implement
         if (nextConversation == null) {
             return;
         }
-        getStoreFactory().conversationStore().setCurrentConversation(nextConversation, ConversationChangeRequester.START_CONVERSATION);
+        inject(ConversationController.class).selectConv(new ConvId(nextConversation.getId()), ConversationChangeRequester.START_CONVERSATION);
     }
 
     @Override
@@ -475,19 +479,29 @@ public class RootFragment extends BaseFragment<RootFragment.Container> implement
     //////////////////////////////////////////////////////////////////////////////
 
     @Override
-    public void onBitmapSelected(ImageAsset imageAsset, boolean imageFromCamera, CameraContext cameraContext) {
+    public void onBitmapSelected(ImageAsset imageAsset, final boolean imageFromCamera, CameraContext cameraContext) {
         if (cameraContext != CameraContext.MESSAGE) {
             return;
         }
         getControllerFactory().getCameraController().closeCamera(cameraContext);
-        getStoreFactory().conversationStore().sendMessage(imageAsset);
+
+        ConversationController ctrl = inject(ConversationController.class);
+
+        ctrl.sendMessage(imageAsset);
 
         // Tablet doesn't have keyboard camera interface
-        TrackingUtils.onSentPhotoMessage(((BaseActivity) getActivity()).injectJava(GlobalTrackingController.class),
-                                         getStoreFactory().conversationStore().getCurrentConversation(),
-                                         imageFromCamera ? SentPictureEvent.Source.CAMERA
-                                                         : SentPictureEvent.Source.GALLERY,
-                                         SentPictureEvent.Method.TABLET);
+        ctrl.withSelectedConv(new Callback<ConversationData>() {
+            @Override
+            public void callback(ConversationData conv) {
+                TrackingUtils.onSentPhotoMessage(
+                    inject(GlobalTrackingController.class),
+                    conv,
+                    imageFromCamera ? SentPictureEvent.Source.CAMERA : SentPictureEvent.Source.GALLERY,
+                    SentPictureEvent.Method.TABLET
+                );
+            }
+        });
+
     }
 
     @Override
@@ -694,7 +708,7 @@ public class RootFragment extends BaseFragment<RootFragment.Container> implement
 
     @Override
     public void onShowConversationMenu(@IConversationScreenController.ConversationMenuRequester int requester,
-                                       IConversation conversation,
+                                       ConvId convId,
                                        View anchorView) {
 
     }

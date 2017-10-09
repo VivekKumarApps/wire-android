@@ -54,6 +54,7 @@ import com.waz.zclient.messages.{LikesController, MessageViewFactory, MessagesCo
 import com.waz.zclient.notifications.controllers.{CallingNotificationsController, ImageNotificationsController, MessageNotificationsController}
 import com.waz.zclient.pages.main.conversation.controller.IConversationScreenController
 import com.waz.zclient.pages.main.conversationpager.controller.ISlidingPaneController
+import com.waz.zclient.pages.main.participants.OptionsMenuController
 import com.waz.zclient.pages.main.pickuser.controller.IPickUserController
 import com.waz.zclient.preferences.PreferencesController
 import com.waz.zclient.tracking.{CallingTrackingController, GlobalTrackingController, UiTrackingController}
@@ -160,6 +161,7 @@ object WireApplication {
 
     bind [CursorController]           to new CursorController()
     bind [ConversationListController] to new ConversationListController()
+    bind [OptionsMenuController]           to new OptionsMenuController()
 
     /**
       * Since tracking controllers will immediately instantiate other necessary controllers, we keep them separated

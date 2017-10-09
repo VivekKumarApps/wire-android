@@ -248,7 +248,7 @@ public class MainTabletFragment extends BaseFragment<MainTabletFragment.Containe
             case RECORDING_FAILURE:
             case CANNOT_SEND_ASSET_FILE_NOT_FOUND:
             case CANNOT_SEND_ASSET_TOO_LARGE:
-                // Handled in ConversationFragment
+                // Handled in OldConversationFragment
                 break;
             default:
                 ExceptionHandler.saveException(new RuntimeException("Unexpected error " + error.getType()), null);
