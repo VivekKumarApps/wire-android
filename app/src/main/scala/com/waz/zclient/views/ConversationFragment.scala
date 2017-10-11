@@ -210,8 +210,8 @@ class ConversationFragment extends BaseFragment[ConversationFragment.Container] 
       case _ =>
     }
 
-    convController.selectedConvName.onUi {
-      case Some(name) => toolbarTitle.setText(name)
+    convController.selectedConv.onUi {
+      case Some(conv) => toolbarTitle.setText(conv.displayName)
       case None =>
     }
 

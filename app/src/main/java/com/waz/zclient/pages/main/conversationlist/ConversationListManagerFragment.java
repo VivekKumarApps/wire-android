@@ -39,9 +39,11 @@ import com.waz.api.Message;
 import com.waz.api.OtrClient;
 import com.waz.api.SyncState;
 import com.waz.api.User;
+import com.waz.api.impl.Conversation;
 import com.waz.model.ConvId;
 import com.waz.model.ConversationData;
 import com.waz.model.UserData;
+import com.waz.model.UserId;
 import com.waz.zclient.BaseActivity;
 import com.waz.zclient.OnBackPressedListener;
 import com.waz.zclient.R;
@@ -104,6 +106,7 @@ import com.waz.zclient.utils.ViewUtils;
 import com.waz.zclient.views.LoadingIndicatorView;
 import com.waz.zclient.views.menus.ConfirmationMenu;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
@@ -210,6 +213,13 @@ public class ConversationListManagerFragment extends BaseFragment<ConversationLi
         getControllerFactory().getConversationScreenController().addConversationControllerObservers(this);
         getControllerFactory().getNavigationController().addNavigationControllerObserver(this);
         getControllerFactory().getConfirmationController().addConfirmationObserver(this);
+
+        inject(ConversationController.class).onConvChanged(new Callback<ConversationController.ConversationChange>() {
+            @Override
+            public void callback(ConversationController.ConversationChange conversationChange) {
+                onCurrentConversationHasChanged(conversationChange);
+            }
+        });
     }
 
     @Override
@@ -271,11 +281,8 @@ public class ConversationListManagerFragment extends BaseFragment<ConversationLi
         }
     }
 
-    @Override
-    public void onCurrentConversationHasChanged(IConversation fromConversation,
-                                                IConversation toConversation,
-                                                ConversationChangeRequester conversationChangerSender) {
-        switch (conversationChangerSender) {
+    private void onCurrentConversationHasChanged(ConversationController.ConversationChange change) {
+        switch (change.requester()) {
             case START_CONVERSATION:
             case START_CONVERSATION_FOR_CALL:
             case START_CONVERSATION_FOR_VIDEO_CALL:
@@ -288,6 +295,12 @@ public class ConversationListManagerFragment extends BaseFragment<ConversationLi
                 animateOnIncomingCall();
                 break;
         }
+    }
+
+    @Override
+    public void onCurrentConversationHasChanged(IConversation fromConversation,
+                                                IConversation toConversation,
+                                                ConversationChangeRequester conversationChangerSender) {
     }
 
     private void stripToConversationList() {
@@ -405,7 +418,9 @@ public class ConversationListManagerFragment extends BaseFragment<ConversationLi
                                                                                                                                 OpenedConversationEvent.Context.OPEN_BUTTON,
                                                                                                                                 -1));
         } else {
-            getStoreFactory().conversationStore().createGroupConversation(users, requester);
+            List<UserId> userIds = new ArrayList<>(users.size());
+            for(User user: users) userIds.add(new UserId(user.getId()));
+            inject(ConversationController.class).createGroupConversation(userIds, requester);
             inject(GlobalTrackingController.class).tagEvent(new CreatedGroupConversationEvent(false,
                                                                                                       (users.size() + 1)));
             inject(GlobalTrackingController.class).tagEvent(new OpenedConversationEvent(ConversationType.GROUP_CONVERSATION.name(),

@@ -21,6 +21,7 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentTransaction;
 import android.view.LayoutInflater;
@@ -33,6 +34,7 @@ import com.waz.api.SyncState;
 import com.waz.api.UpdateListener;
 import com.waz.api.User;
 import com.waz.model.ConvId;
+import com.waz.model.ConversationData;
 import com.waz.model.UserId;
 import com.waz.zclient.OnBackPressedListener;
 import com.waz.zclient.R;
@@ -49,10 +51,10 @@ import com.waz.zclient.pages.main.connect.PendingConnectRequestManagerFragment;
 import com.waz.zclient.pages.main.conversation.ConversationManagerFragment;
 import com.waz.zclient.ui.utils.MathUtils;
 
+import com.waz.zclient.utils.Callback;
 import timber.log.Timber;
 
 public class SecondPageFragment extends BaseFragment<SecondPageFragment.Container> implements OnBackPressedListener,
-                                                                                              ConversationStoreObserver,
                                                                                               ConversationManagerFragment.Container,
                                                                                               PagerControllerObserver,
                                                                                               PendingConnectRequestManagerFragment.Container,
@@ -64,8 +66,10 @@ public class SecondPageFragment extends BaseFragment<SecondPageFragment.Containe
 
 
     private Page currentPage;
-    private IConversation selectedConversation;
+    private ConvId convId;
     private IConversation.Type selectedConversationType;
+
+    private ConversationController conversationController;
 
     public static SecondPageFragment newInstance() {
         return new SecondPageFragment();
@@ -102,7 +106,6 @@ public class SecondPageFragment extends BaseFragment<SecondPageFragment.Containe
     @Override
     public void onResume() {
         super.onResume();
-        getStoreFactory().conversationStore().addConversationStoreObserverAndUpdate(this);
         getControllerFactory().getNavigationController().addPagerControllerObserver(this);
     }
 
@@ -115,16 +118,11 @@ public class SecondPageFragment extends BaseFragment<SecondPageFragment.Containe
     @Override
     public void onPause() {
         getControllerFactory().getNavigationController().removePagerControllerObserver(this);
-        getStoreFactory().conversationStore().removeConversationStoreObserver(this);
         super.onPause();
     }
 
     @Override
     public void onDestroyView() {
-        if (selectedConversation != null) {
-            selectedConversation.removeUpdateListener(this);
-        }
-        selectedConversation = null;
         super.onDestroyView();
     }
 
@@ -138,72 +136,54 @@ public class SecondPageFragment extends BaseFragment<SecondPageFragment.Containe
     }
 
     @Override
-    public void onConversationListUpdated(@NonNull ConversationsList conversationsList) {
-
-    }
-
-    @Override
-    public void onCurrentConversationHasChanged(IConversation fromConversation,
-                                                final IConversation toConversation,
-                                                final ConversationChangeRequester conversationChangerSender) {
-        if (selectedConversation != null) {
-            selectedConversation.removeUpdateListener(this);
-        }
-        selectedConversation = null;
-
-        if (toConversation == null) {
-            return;
-        }
-
-        if (fromConversation != null &&
-            fromConversation.getId().equals(toConversation.getId())) {
-            return;
-        }
-
-        selectedConversation = toConversation;
-        selectedConversation.addUpdateListener(this);
-        selectedConversationType = toConversation.getType();
-
-        Timber.i("Conversation: %s type: %s requester: %s",
-                 toConversation,
-                 toConversation.getType(),
-                 conversationChangerSender);
-        // either starting from beginning or switching fragment
-        final boolean switchingToPendingConnectRequest = (toConversation.getType() == IConversation.Type.WAIT_FOR_CONNECTION);
-
-        final boolean switchingToConnectRequestInbox = toConversation.getType() == IConversation.Type.INCOMING_CONNECTION;
-
-
-        // This must be posted because onCurrentConversationHasChanged()
-        // might still be running and iterating over the observers -
-        // while the posted call triggers things to register/unregister
-        // from the list of observers, causing ConcurrentModificationException
-        new Handler().post(new Runnable() {
+    public void onViewCreated(View view, @Nullable Bundle savedInstanceState) {
+        conversationController = inject(ConversationController.class);
+        conversationController.onConvChanged(new Callback<ConversationController.ConversationChange>() {
             @Override
-            public void run() {
-                if (switchingToConnectRequestInbox) {
-                    Bundle arguments = new Bundle();
-                    arguments.putString(ARGUMENT_CONVERSATION_ID, toConversation.getId());
-                    openPage(Page.CONNECT_REQUEST_INBOX, arguments);
-                } else if (switchingToPendingConnectRequest) {
-                    Bundle arguments = new Bundle();
-                    arguments.putString(ARGUMENT_CONVERSATION_ID, toConversation.getId());
-                    openPage(Page.CONNECT_REQUEST_PENDING, arguments);
-                } else {
-                    openPage(Page.MESSAGE_STREAM, new Bundle());
+            public void callback(final ConversationController.ConversationChange change) {
+                convId = null;
+                if (change.toConversation() == null || change.noChange()) {
+                    return;
                 }
+
+                convId = change.toConversation();
+
+                conversationController.withConvLoaded(convId, new Callback<ConversationData>() {
+                    @Override
+                    public void callback(final ConversationData data) {
+                        selectedConversationType = data.convType();
+
+                        Timber.i("Conversation: %s type: %s requester: %s",
+                            data.id(),
+                            data.convType(),
+                            change.requester());
+                        // either starting from beginning or switching fragment
+                        final boolean switchingToPendingConnectRequest = (data.convType() == IConversation.Type.WAIT_FOR_CONNECTION);
+                        final boolean switchingToConnectRequestInbox = data.convType() == IConversation.Type.INCOMING_CONNECTION;
+                        // This must be posted because onCurrentConversationHasChanged()
+                        // might still be running and iterating over the observers -
+                        // while the posted call triggers things to register/unregister
+                        // from the list of observers, causing ConcurrentModificationException
+                        new Handler().post(new Runnable() {
+                            @Override
+                            public void run() {
+                                if (switchingToConnectRequestInbox) {
+                                    Bundle arguments = new Bundle();
+                                    arguments.putString(ARGUMENT_CONVERSATION_ID, data.id().str());
+                                    openPage(Page.CONNECT_REQUEST_INBOX, arguments);
+                                } else if (switchingToPendingConnectRequest) {
+                                    Bundle arguments = new Bundle();
+                                    arguments.putString(ARGUMENT_CONVERSATION_ID, data.id().str());
+                                    openPage(Page.CONNECT_REQUEST_PENDING, arguments);
+                                } else {
+                                    openPage(Page.MESSAGE_STREAM, new Bundle());
+                                }
+                            }
+                        });
+                    }
+                });
             }
         });
-    }
-
-    @Override
-    public void onConversationSyncingStateHasChanged(SyncState syncState) {
-
-    }
-
-    @Override
-    public void onMenuConversationHasChanged(IConversation fromConversation) {
-
     }
 
     private void openPage(Page page, Bundle arguments) {
@@ -337,12 +317,17 @@ public class SecondPageFragment extends BaseFragment<SecondPageFragment.Containe
 
     @Override
     public void updated() {
-        if ((selectedConversationType == IConversation.Type.INCOMING_CONNECTION ||
-             selectedConversationType == IConversation.Type.WAIT_FOR_CONNECTION) &&
-            selectedConversation.getType() == IConversation.Type.ONE_TO_ONE) {
-            openPage(Page.MESSAGE_STREAM, new Bundle());
-        }
-        selectedConversationType = selectedConversation.getType();
+        conversationController.withConvLoaded(convId, new Callback<ConversationData>() {
+            @Override
+            public void callback(ConversationData conv) {
+                if ((selectedConversationType == IConversation.Type.INCOMING_CONNECTION ||
+                    selectedConversationType == IConversation.Type.WAIT_FOR_CONNECTION) &&
+                    conv.convType() == IConversation.Type.ONE_TO_ONE) {
+                    openPage(Page.MESSAGE_STREAM, new Bundle());
+                }
+                selectedConversationType = conv.convType();
+            }
+        });
     }
 
     @Override

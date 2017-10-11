@@ -29,6 +29,7 @@ import com.waz.zclient.conversation.ConversationController.ConversationChange
 import com.waz.zclient.core.stores.conversation.ConversationChangeRequester
 import com.waz.zclient.utils.Callback
 import com.waz.zclient.{BaseActivity, Injectable, Injector}
+import com.waz.ZLog._
 import com.waz.ZLog.ImplicitTag._
 import com.waz.api
 import com.waz.api.MessageContent.Asset.ErrorHandler
@@ -50,7 +51,16 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
 
   private var currentConvId = Option.empty[ConvId]
 
-  val selectedConvId = zms.flatMap(_.convsStats.selectedConversationId).collect { case Some(convId) => convId }
+  val selectedConvId = zms.flatMap(_.convsStats.selectedConversationId).collect { case Some(convId) =>
+    verbose(s"selected conv id changed to $convId")
+    convId
+  }
+
+  for {
+    z <- zms
+    id <- selectedConvId
+  } yield z.conversations.forceNameUpdate(id)
+
   def getSelectedConvId(): ConvId = selectedConvId.currentValue.orNull; // TODO: remove when not used anymore
 
   // this should be the only UI entry point to change conv in SE
@@ -59,6 +69,7 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
     case Some(convId) if currentConvId.contains(convId) => Future.successful({})
     case Some(convId) =>
       stats.head.flatMap(_.selectConversation(id)).map { _ =>
+        verbose(s"selectConv $id")
         convChanged ! ConversationChange(from = currentConvId, to = id, requester = requester)
         currentConvId = id
       }
@@ -72,13 +83,10 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
     convChanged.on(Threading.Ui) { cc => callback.callback(cc) }
   }
 
-  def conversationChanged(convId: ConvId): Signal[Option[ConversationData]] = for {
+  def changeWithinConv(convId: ConvId): Signal[Option[ConversationData]] = for {
     z <- zms
     conv <- z.convsStorage.optSignal(convId)
   } yield conv
-
-  def onConversationChanged(convId: ConvId, callback: Callback[ConversationData]): Unit =
-    conversationChanged(convId).collect { case Some(conv) => conv }.onUi { conv => callback.callback(conv) }
 
   def loadConv(id: ConvId): Future[Option[ConversationData]] = storage.head.flatMap(_.get(id))
 
@@ -87,11 +95,6 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
       case Some(data) => callback.callback(data)
       case None =>
     }
-
-  def isGroup(id: ConvId): Future[Boolean] = loadConv(id).flatMap {
-    case None => Future.successful(false)
-    case Some(conv) => isGroup(conv)
-  }
 
   def isGroup(conv: ConversationData): Future[Boolean] =
     if (conv.team.isEmpty) Future.successful(conv.convType == ConversationType.Group)
@@ -124,18 +127,11 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
     case None => Signal.const(false)
   }
 
-  def withSelectedConvIsGroup(callback: Callback[java.lang.Boolean]): Unit = { // TODO: remove when not used anymore
-    selectedConvIsGroup.head.foreach { b => callback.callback(b) }
-  }
-
   val selectedConvIsVerified: Signal[Boolean] = selectedConv.map(_.fold(false)(_.verified == Verification.VERIFIED))
-  val selectedConvIsEphemeral: Signal[Boolean] = selectedConv.map(_.fold(false)(_.ephemeral != EphemeralExpiration.NONE))
 
   def unreadCountForConv(conversationData: ConversationData): Int =
     if (conversationData.archived || conversationData.muted || conversationData.hidden) 0
     else conversationData.unreadCount.total
-
-  val selectedConvName: Signal[Option[String]] = selectedConv.map(_.flatMap(_.name))
 
   val selectedConversationIsActive: Signal[Boolean] = selectedConv.map {
     case Some(conv) => conv.isActive
@@ -222,6 +218,7 @@ object ConversationController {
   case class ConversationChange(from: Option[ConvId], to: Option[ConvId], requester: ConversationChangeRequester) {
     def fromConversation(): ConvId = from.orNull // TODO: remove when not used anymore
     def toConversation(): ConvId = to.orNull // TODO: remove when not used anymore
+    lazy val noChange: Boolean = from == to
   }
 
   val emptyImageAsset: com.waz.api.ImageAsset = ImageAsset.Empty.asInstanceOf[com.waz.api.ImageAsset]

@@ -38,15 +38,16 @@ import com.waz.zclient.controllers.navigation.NavigationControllerObserver;
 import com.waz.zclient.controllers.navigation.Page;
 import com.waz.zclient.controllers.navigation.PagerControllerObserver;
 import com.waz.zclient.conversation.CollectionController;
+import com.waz.zclient.conversation.ConversationController;
 import com.waz.zclient.core.stores.conversation.ConversationChangeRequester;
 import com.waz.zclient.core.stores.conversation.ConversationStoreObserver;
 import com.waz.zclient.pages.BaseFragment;
 import com.waz.zclient.ui.utils.KeyboardUtils;
 import com.waz.zclient.ui.utils.ResourceUtils;
+import com.waz.zclient.utils.Callback;
 import com.waz.zclient.utils.LayoutSpec;
 
-public class ConversationPagerFragment extends BaseFragment<ConversationPagerFragment.Container> implements ConversationStoreObserver,
-                                                                                                            OnBackPressedListener,
+public class ConversationPagerFragment extends BaseFragment<ConversationPagerFragment.Container> implements OnBackPressedListener,
                                                                                                             PagerControllerObserver,
                                                                                                             NavigationControllerObserver,
                                                                                                             FirstPageFragment.Container,
@@ -100,20 +101,25 @@ public class ConversationPagerFragment extends BaseFragment<ConversationPagerFra
     public void onStart() {
         super.onStart();
 
-        getStoreFactory().conversationStore().addConversationStoreObserver(this);
         conversationPager.setOnPageChangeListener(getControllerFactory().getNavigationController());
 
         conversationPager.setEnabled(getControllerFactory().getNavigationController().isPagerEnabled());
 
         getControllerFactory().getNavigationController().addPagerControllerObserver(this);
         getControllerFactory().getNavigationController().addNavigationControllerObserver(this);
+
+        inject(ConversationController.class).onConvChanged(new Callback<ConversationController.ConversationChange>() {
+            @Override
+            public void callback(ConversationController.ConversationChange change) {
+                onCurrentConversationHasChanged(change);
+            }
+        });
     }
 
     @Override
     public void onStop() {
         getControllerFactory().getNavigationController().removePagerControllerObserver(this);
         getControllerFactory().getNavigationController().removeNavigationControllerObserver(this);
-        getStoreFactory().conversationStore().removeConversationStoreObserver(this);
         conversationPager.setOnPageChangeListener(null);
         super.onStop();
     }
@@ -133,16 +139,8 @@ public class ConversationPagerFragment extends BaseFragment<ConversationPagerFra
         }
     }
 
-    @Override
-    public void onConversationListUpdated(@NonNull ConversationsList conversationsList) {
-
-    }
-
-    @Override
-    public void onCurrentConversationHasChanged(IConversation fromConversation,
-                                                final IConversation toConversation,
-                                                ConversationChangeRequester conversationChangeRequester) {
-        switch (conversationChangeRequester) {
+    private void onCurrentConversationHasChanged(ConversationController.ConversationChange change) {
+        switch (change.requester()) {
             case ARCHIVED_RESULT:
             case FIRST_LOAD:
                 break;
@@ -206,16 +204,6 @@ public class ConversationPagerFragment extends BaseFragment<ConversationPagerFra
                 }, PAGER_DELAY);
                 break;
         }
-    }
-
-    @Override
-    public void onConversationSyncingStateHasChanged(SyncState syncState) {
-
-    }
-
-    @Override
-    public void onMenuConversationHasChanged(IConversation fromConversation) {
-
     }
 
     @Override

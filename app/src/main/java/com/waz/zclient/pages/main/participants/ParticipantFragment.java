@@ -112,9 +112,7 @@ public class ParticipantFragment extends BaseFragment<ParticipantFragment.Contai
                                                                                      PendingConnectRequestFragment.Container,
                                                                                      OptionsMenuFragment.Container,
                                                                                      PickUserFragment.Container,
-                                                                                     OnConversationLoadedListener,
                                                                                      ConversationScreenControllerObserver,
-                                                                                     ConversationStoreObserver,
                                                                                      OnBackPressedListener,
                                                                                      PickUserControllerScreenObserver,
                                                                                      SingleOtrClientFragment.Container {
@@ -266,24 +264,32 @@ public class ParticipantFragment extends BaseFragment<ParticipantFragment.Contai
     public void onStart() {
         super.onStart();
         getStoreFactory().participantsStore().addParticipantsStoreObserver(this);
-        getStoreFactory().conversationStore().addConversationStoreObserver(this);
+        ConversationController ctrl = inject(ConversationController.class);
+
         if (userRequester == IConnectStore.UserRequester.POPOVER) {
             final User user = getStoreFactory().singleParticipantStore().getUser();
             getStoreFactory().connectStore().loadUser(user.getId(), userRequester);
         } else {
-            getStoreFactory().conversationStore().loadCurrentConversation(this);
+            onConversationLoaded(ctrl.getSelectedConvId());
         }
         if (LayoutSpec.isPhone(getActivity())) {
             // ConversationScreenController is handled in ParticipantDialogFragment for tablets
             getControllerFactory().getConversationScreenController().addConversationControllerObservers(this);
         }
         getControllerFactory().getPickUserController().addPickUserScreenControllerObserver(this);
+
+        ctrl.onConvChanged(new Callback<ConversationController.ConversationChange>() {
+            @Override
+            public void callback(ConversationController.ConversationChange change) {
+                onCurrentConversationHasChanged(change);
+                onConversationLoaded(change.toConversation());
+            }
+        });
     }
 
     @Override
     public void onStop() {
         getStoreFactory().participantsStore().setCurrentConversation(null);
-        getStoreFactory().conversationStore().removeConversationStoreObserver(this);
         if (LayoutSpec.isPhone(getActivity())) {
             getControllerFactory().getConversationScreenController().removeConversationControllerObservers(this);
         }
@@ -310,37 +316,20 @@ public class ParticipantFragment extends BaseFragment<ParticipantFragment.Contai
         super.onDestroyView();
     }
 
-    @Override
-    public void onConversationListUpdated(@NonNull ConversationsList conversationsList) { }
-
-    @Override
-    public void onCurrentConversationHasChanged(IConversation fromConversation,
-                                                IConversation toConversation,
-                                                ConversationChangeRequester conversationChangeRequester) {
-        if (toConversation == null) {
+    private void onCurrentConversationHasChanged(ConversationController.ConversationChange change) {
+        if (change.toConversation() == null) {
             return;
         }
-        onConversationLoaded(toConversation);
 
-        if (conversationChangeRequester == ConversationChangeRequester.START_CONVERSATION ||
-            conversationChangeRequester == ConversationChangeRequester.START_CONVERSATION_FOR_VIDEO_CALL ||
-            conversationChangeRequester == ConversationChangeRequester.START_CONVERSATION_FOR_CALL ||
-            conversationChangeRequester == ConversationChangeRequester.START_CONVERSATION_FOR_CAMERA) {
+        if (change.requester() == ConversationChangeRequester.START_CONVERSATION ||
+            change.requester() == ConversationChangeRequester.START_CONVERSATION_FOR_VIDEO_CALL ||
+            change.requester() == ConversationChangeRequester.START_CONVERSATION_FOR_CALL ||
+            change.requester() == ConversationChangeRequester.START_CONVERSATION_FOR_CAMERA) {
             getChildFragmentManager().popBackStackImmediate(PickUserFragment.TAG(),
                                                             FragmentManager.POP_BACK_STACK_INCLUSIVE);
             getControllerFactory().getPickUserController().hidePickUserWithoutAnimations(
                 getCurrentPickerDestination());
         }
-
-    }
-
-    @Override
-    public void onConversationSyncingStateHasChanged(SyncState syncState) {
-
-    }
-
-    @Override
-    public void onMenuConversationHasChanged(IConversation fromConversation) {
 
     }
 
@@ -676,19 +665,23 @@ public class ParticipantFragment extends BaseFragment<ParticipantFragment.Contai
     @Override
     public void onConversationLoaded() { }
 
-    //////////////////////////////////////////////////////////////////////////////////////////
-    //
-    //  OnConversationLoadedListener
-    //
-    //////////////////////////////////////////////////////////////////////////////////////////
+    private void onConversationLoaded(final ConvId convId) {
+        if (convId == null) {
+            return;
+        }
 
-    @Override
-    public void onConversationLoaded(IConversation conversation) {
-        getControllerFactory().getConversationScreenController().setSingleConversation(conversation.getType().equals(
-            IConversation.Type.ONE_TO_ONE));
-        getControllerFactory().getConversationScreenController().setMemberOfConversation(conversation.isMemberOfConversation());
-        getStoreFactory().participantsStore().setCurrentConversation(conversation);
-        conversationModelObserver.setAndUpdate(conversation);
+        inject(ConversationController.class).withConvLoaded(convId, new Callback<ConversationData>() {
+            @Override
+            public void callback(ConversationData conversationData) {
+                getControllerFactory().getConversationScreenController().setSingleConversation(conversationData.convType().equals(
+                    IConversation.Type.ONE_TO_ONE));
+                getControllerFactory().getConversationScreenController().setMemberOfConversation(conversationData.isActive());
+
+                IConversation iConv = getStoreFactory().conversationStore().getConversation(convId.str());
+                getStoreFactory().participantsStore().setCurrentConversation(iConv);
+                conversationModelObserver.setAndUpdate(iConv);
+            }
+        });
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////

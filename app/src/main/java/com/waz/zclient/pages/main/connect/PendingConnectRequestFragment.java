@@ -29,9 +29,12 @@ import android.widget.TextView;
 import com.waz.api.IConversation;
 import com.waz.api.UpdateListener;
 import com.waz.api.User;
+import com.waz.model.ConvId;
+import com.waz.model.ConversationData;
 import com.waz.zclient.R;
 import com.waz.zclient.common.views.UserDetailsView;
 import com.waz.zclient.controllers.accentcolor.AccentColorObserver;
+import com.waz.zclient.conversation.ConversationController;
 import com.waz.zclient.core.stores.connect.ConnectStoreObserver;
 import com.waz.zclient.core.stores.connect.IConnectStore;
 import com.waz.zclient.core.stores.conversation.OnConversationLoadedListener;
@@ -43,6 +46,7 @@ import com.waz.zclient.pages.main.participants.dialog.DialogLaunchMode;
 import com.waz.zclient.ui.theme.ThemeUtils;
 import com.waz.zclient.ui.utils.KeyboardUtils;
 import com.waz.zclient.ui.views.ZetaButton;
+import com.waz.zclient.utils.Callback;
 import com.waz.zclient.utils.LayoutSpec;
 import com.waz.zclient.utils.ViewUtils;
 import com.waz.zclient.views.images.ImageAssetImageView;
@@ -50,7 +54,6 @@ import com.waz.zclient.views.menus.FooterMenu;
 import com.waz.zclient.views.menus.FooterMenuCallback;
 
 public class PendingConnectRequestFragment extends BaseFragment<PendingConnectRequestFragment.Container> implements UserProfile,
-                                                                                                                    OnConversationLoadedListener,
                                                                                                                     ConnectStoreObserver,
                                                                                                                     AccentColorObserver,
                                                                                                                     UpdateListener {
@@ -62,9 +65,8 @@ public class PendingConnectRequestFragment extends BaseFragment<PendingConnectRe
     public static final String ARGUMENT_USER_REQUESTER = "ARGUMENT_USER_REQUESTER";
     public static final String STATE_IS_SHOWING_FOOTER_MENU = "STATE_IS_SHOWING_FOOTER_MENU";
 
-
     private String userId;
-    private String conversationId;
+    private ConvId conversationId;
     private IConversation conversation;
     private ConnectRequestLoadMode loadMode;
     private IConnectStore.UserRequester userRequester;
@@ -153,13 +155,13 @@ public class PendingConnectRequestFragment extends BaseFragment<PendingConnectRe
     public View onCreateView(LayoutInflater inflater, final ViewGroup viewContainer, Bundle savedInstanceState) {
         if (savedInstanceState != null) {
             userId = savedInstanceState.getString(ARGUMENT_USER_ID);
-            conversationId = savedInstanceState.getString(ARGUMENT_CONVERSATION_ID);
+            conversationId = new ConvId(savedInstanceState.getString(ARGUMENT_CONVERSATION_ID));
             loadMode = ConnectRequestLoadMode.valueOf(savedInstanceState.getString(ARGUMENT_LOAD_MODE));
             userRequester = IConnectStore.UserRequester.valueOf(savedInstanceState.getString(ARGUMENT_USER_REQUESTER));
             isShowingFooterMenu = savedInstanceState.getBoolean(STATE_IS_SHOWING_FOOTER_MENU);
         } else {
             userId = getArguments().getString(ARGUMENT_USER_ID);
-            conversationId = getArguments().getString(ARGUMENT_CONVERSATION_ID);
+            conversationId = new ConvId(getArguments().getString(ARGUMENT_CONVERSATION_ID));
             loadMode = ConnectRequestLoadMode.valueOf(getArguments().getString(ARGUMENT_LOAD_MODE));
             userRequester = IConnectStore.UserRequester.valueOf(getArguments().getString(ARGUMENT_USER_REQUESTER));
             isShowingFooterMenu = false;
@@ -222,7 +224,12 @@ public class PendingConnectRequestFragment extends BaseFragment<PendingConnectRe
 
         switch (loadMode) {
             case LOAD_BY_CONVERSATION_ID:
-                getStoreFactory().conversationStore().loadConversation(conversationId, this);
+                inject(ConversationController.class).withConvLoaded(conversationId, new Callback<ConversationData>() {
+                    @Override
+                    public void callback(ConversationData conversationData) {
+                        onConversationLoaded(conversationData.id());
+                    }
+                });
                 break;
             case LOAD_BY_USER_ID:
                 getStoreFactory().connectStore().loadUser(userId, userRequester);
@@ -233,7 +240,7 @@ public class PendingConnectRequestFragment extends BaseFragment<PendingConnectRe
     @Override
     public void onSaveInstanceState(Bundle outState) {
         outState.putString(ARGUMENT_USER_ID, userId);
-        outState.putString(ARGUMENT_CONVERSATION_ID, conversationId);
+        outState.putString(ARGUMENT_CONVERSATION_ID, conversationId.str());
         if (loadMode != null) {
             outState.putString(ARGUMENT_LOAD_MODE, loadMode.toString());
         }
@@ -351,21 +358,14 @@ public class PendingConnectRequestFragment extends BaseFragment<PendingConnectRe
         footerMenu.setLeftActionLabelText(getString(R.string.send_connect_request__connect_button__text));
     }
 
-    //////////////////////////////////////////////////////////////////////////////////////////
-    //
-    //  ConversationStoreObserver
-    //
-    //////////////////////////////////////////////////////////////////////////////////////////
-
-    @Override
-    public void onConversationLoaded(IConversation conversation) {
+    private void onConversationLoaded(ConvId convId) {
 
         switch (loadMode) {
             case LOAD_BY_CONVERSATION_ID:
                 if (this.conversation != null) {
                     this.conversation.removeUpdateListener(this);
                 }
-                this.conversation = conversation;
+                this.conversation = getStoreFactory().conversationStore().getConversation(convId.str());
                 if (conversation != null) {
                     conversation.addUpdateListener(this);
                 }
@@ -391,8 +391,12 @@ public class PendingConnectRequestFragment extends BaseFragment<PendingConnectRe
 
         switch (loadMode) {
             case LOAD_BY_USER_ID:
-                getStoreFactory().conversationStore().loadConversation(user.getConversation().getId(),
-                                                                          this);
+                inject(ConversationController.class).withConvLoaded(new ConvId(user.getConversation().getId()), new Callback<ConversationData>() {
+                    @Override
+                    public void callback(ConversationData conversationData) {
+                        onConversationLoaded(conversationData.id());
+                    }
+                });
                 break;
         }
 

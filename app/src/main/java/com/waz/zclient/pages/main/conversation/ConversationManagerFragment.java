@@ -34,6 +34,7 @@ import com.waz.api.MessageContent;
 import com.waz.api.OtrClient;
 import com.waz.api.SyncState;
 import com.waz.api.User;
+import com.waz.api.impl.Conversation;
 import com.waz.model.*;
 import com.waz.zclient.BaseActivity;
 import com.waz.zclient.OnBackPressedListener;
@@ -84,7 +85,6 @@ public class ConversationManagerFragment extends BaseFragment<ConversationManage
                                                                                                                 OnBackPressedListener,
                                                                                                                 ConversationScreenControllerObserver,
                                                                                                                 DrawingObserver,
-                                                                                                                ConversationStoreObserver,
                                                                                                                 DrawingFragment.Container,
                                                                                                                 CameraFragment.Container,
                                                                                                                 PickUserFragment.Container,
@@ -132,17 +132,50 @@ public class ConversationManagerFragment extends BaseFragment<ConversationManage
     @Override
     public void onStart() {
         super.onStart();
-        getStoreFactory().conversationStore().addConversationStoreObserver(this);
         getControllerFactory().getConversationScreenController().addConversationControllerObservers(this);
         getControllerFactory().getDrawingController().addDrawingObserver(this);
         getControllerFactory().getCameraController().addCameraActionObserver(this);
         getControllerFactory().getPickUserController().addPickUserScreenControllerObserver(this);
-        IConversation currentConversation = getStoreFactory().conversationStore().getConversation(inject(ConversationController.class).getSelectedConvId().str());
-        if (currentConversation != null) {
-            getStoreFactory().participantsStore().setCurrentConversation(currentConversation);
-        }
+
         getControllerFactory().getLocationController().addObserver(this);
         getCollectionController().addObserver(this);
+
+        final ConversationController ctrl = inject(ConversationController.class);
+
+        if (ctrl.getSelectedConvId() != null) {
+            IConversation currentConversation = getStoreFactory().conversationStore().getConversation(ctrl.getSelectedConvId().str());
+            if (currentConversation != null) {
+                getStoreFactory().participantsStore().setCurrentConversation(currentConversation);
+            }
+        }
+
+        ctrl.onConvChanged(new Callback<ConversationController.ConversationChange>() {
+            @Override
+            public void callback(ConversationController.ConversationChange change) {
+            if (change.requester() == ConversationChangeRequester.START_CONVERSATION ||
+                change.requester() == ConversationChangeRequester.INCOMING_CALL ||
+                change.requester() == ConversationChangeRequester.LEAVE_CONVERSATION ||
+                change.requester() == ConversationChangeRequester.DELETE_CONVERSATION ||
+                change.requester() == ConversationChangeRequester.BLOCK_USER) {
+                if (getControllerFactory().getNavigationController().getCurrentRightPage() == Page.CAMERA &&
+                    !change.noChange()) {
+                    getControllerFactory().getCameraController().closeCamera(CameraContext.MESSAGE);
+                }
+
+                getControllerFactory().getConversationScreenController().hideParticipants(false, (change.requester() == ConversationChangeRequester.START_CONVERSATION));
+
+                closeLikesList();
+            }
+
+            if (change.toConversation() != null) {
+                IConversation iConv = getStoreFactory().conversationStore().getConversation(change.toConversation().str());
+                getStoreFactory().participantsStore().setCurrentConversation(iConv);
+                conversationModelObserver.setAndUpdate(iConv);
+            }
+
+            getCollectionController().closeCollection();
+            }
+        });
     }
 
     @Override
@@ -152,7 +185,6 @@ public class ConversationManagerFragment extends BaseFragment<ConversationManage
         getControllerFactory().getCameraController().removeCameraActionObserver(this);
         getControllerFactory().getDrawingController().removeDrawingObserver(this);
         getControllerFactory().getConversationScreenController().removeConversationControllerObservers(this);
-        getStoreFactory().conversationStore().removeConversationStoreObserver(this);
         getCollectionController().removeObserver(this);
         super.onStop();
     }
@@ -317,51 +349,6 @@ public class ConversationManagerFragment extends BaseFragment<ConversationManage
             .commit();
     }
 
-    //////////////////////////////////////////////////////////////////////////////////////////
-    //
-    //  ConversationStoreObserver
-    //
-    //////////////////////////////////////////////////////////////////////////////////////////
-
-    @Override
-    public void onConversationListUpdated(@NonNull ConversationsList conversationsList) {
-
-    }
-
-    @Override
-    public void onCurrentConversationHasChanged(IConversation fromConversation,
-                                                IConversation toConversation,
-                                                ConversationChangeRequester conversationChangerSender) {
-        if (conversationChangerSender == ConversationChangeRequester.START_CONVERSATION ||
-            conversationChangerSender == ConversationChangeRequester.INCOMING_CALL ||
-            conversationChangerSender == ConversationChangeRequester.LEAVE_CONVERSATION ||
-            conversationChangerSender == ConversationChangeRequester.DELETE_CONVERSATION ||
-            conversationChangerSender == ConversationChangeRequester.BLOCK_USER) {
-            if (getControllerFactory().getNavigationController().getCurrentRightPage() == Page.CAMERA &&
-                !fromConversation.getId().equals(toConversation.getId())) {
-                getControllerFactory().getCameraController().closeCamera(CameraContext.MESSAGE);
-            }
-
-            getControllerFactory().getConversationScreenController().hideParticipants(false, (conversationChangerSender == ConversationChangeRequester.START_CONVERSATION));
-
-            closeLikesList();
-        }
-        if (toConversation != null) {
-            getStoreFactory().participantsStore().setCurrentConversation(toConversation);
-            conversationModelObserver.setAndUpdate(toConversation);
-        }
-        getCollectionController().closeCollection();
-    }
-
-    @Override
-    public void onConversationSyncingStateHasChanged(SyncState syncState) {
-
-    }
-
-    @Override
-    public void onMenuConversationHasChanged(IConversation fromConversation) {
-
-    }
 
     //////////////////////////////////////////////////////////////////////////////////////////
     //

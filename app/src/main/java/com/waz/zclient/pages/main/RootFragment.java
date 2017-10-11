@@ -98,7 +98,6 @@ import timber.log.Timber;
 
 
 public class RootFragment extends BaseFragment<RootFragment.Container> implements
-                                                                       ConversationStoreObserver,
                                                                        SlidingPaneObserver,
                                                                        PendingConnectRequestManagerFragment.Container,
                                                                        ConnectRequestFragment.Container,
@@ -227,11 +226,19 @@ public class RootFragment extends BaseFragment<RootFragment.Container> implement
 
         getControllerFactory().getConversationScreenController().addConversationControllerObservers(this);
         getControllerFactory().getNavigationController().addPagerControllerObserver(this);
-        if (!getControllerFactory().getConversationScreenController().isConversationStreamUiInitialized()) {
+        /*if (!getControllerFactory().getConversationScreenController().isConversationStreamUiInitialized()) {
             getStoreFactory().conversationStore().addConversationStoreObserverAndUpdate(this);
         } else {
             getStoreFactory().conversationStore().addConversationStoreObserver(this);
-        }
+        }*/
+
+        inject(ConversationController.class).onConvChanged(new Callback<ConversationController.ConversationChange>() {
+            @Override
+            public void callback(ConversationController.ConversationChange conversationChange) {
+                onCurrentConversationHasChanged(conversationChange);
+            }
+        });
+
         getControllerFactory().getCameraController().addCameraActionObserver(this);
         getControllerFactory().getPickUserController().addPickUserScreenControllerObserver(this);
         getControllerFactory().getGiphyController().addObserver(this);
@@ -251,7 +258,6 @@ public class RootFragment extends BaseFragment<RootFragment.Container> implement
         getControllerFactory().getCameraController().removeCameraActionObserver(this);
         getControllerFactory().getUsernameController().removeUsernamesObserver(this);
         getControllerFactory().getNavigationController().removePagerControllerObserver(this);
-        getStoreFactory().conversationStore().removeConversationStoreObserver(this);
         getControllerFactory().getPickUserController().removePickUserScreenControllerObserver(this);
         getControllerFactory().getGiphyController().removeObserver(this);
         getControllerFactory().getDrawingController().removeDrawingObserver(this);
@@ -279,22 +285,20 @@ public class RootFragment extends BaseFragment<RootFragment.Container> implement
         }
     }
 
-    @Override
-    public void onCurrentConversationHasChanged(final IConversation fromConversation,
-                                                final IConversation toConversation,
-                                                final ConversationChangeRequester conversationChangerSender) {
-        if (toConversation == null) {
+    private void onCurrentConversationHasChanged(final ConversationController.ConversationChange change) {
+        if (change.toConversation() == null) {
             return;
         }
 
-        conversationModelObserver.setAndUpdate(toConversation);
-        getStoreFactory().participantsStore().setCurrentConversation(toConversation);
+        IConversation iConv = getStoreFactory().conversationStore().getConversation(change.toConversation().str());
+        conversationModelObserver.setAndUpdate(iConv);
+        getStoreFactory().participantsStore().setCurrentConversation(iConv);
 
         if (rightSideShouldBeBlank) {
             return;
         }
 
-        final IConversation.Type type = toConversation.getType();
+        final IConversation.Type type = iConv.getType();
         // This must be posted because onCurrentConversationHasChanged()
         // might still be running and iterating over the observers -
         // while the posted call triggers things to register/unregister
@@ -308,14 +312,14 @@ public class RootFragment extends BaseFragment<RootFragment.Container> implement
                 switch (type) {
                     case WAIT_FOR_CONNECTION:
                         fragment = PendingConnectRequestManagerFragment.newInstance(null,
-                                                                                    toConversation.getId(),
+                                                                                    change.toConversation().str(),
                                                                                     ConnectRequestLoadMode.LOAD_BY_CONVERSATION_ID,
                                                                                     IConnectStore.UserRequester.CONVERSATION);
                         tag = PendingConnectRequestManagerFragment.TAG;
                         page = Page.PENDING_CONNECT_REQUEST_AS_CONVERSATION;
                         break;
                     case INCOMING_CONNECTION:
-                        fragment = ConnectRequestFragment.newInstance(toConversation.getId());
+                        fragment = ConnectRequestFragment.newInstance(change.toConversation().str());
                         tag = ConnectRequestFragment.FragmentTag();
                         page = Page.CONNECT_REQUEST_INBOX;
                         break;
@@ -331,24 +335,10 @@ public class RootFragment extends BaseFragment<RootFragment.Container> implement
             }
         });
 
-        if (ViewUtils.isInPortrait(getActivity()) && conversationChangerSender != ConversationChangeRequester.FIRST_LOAD) {
+        if (ViewUtils.isInPortrait(getActivity()) && change.requester() != ConversationChangeRequester.FIRST_LOAD) {
             slidingPaneLayout.closePane();
             getControllerFactory().getSlidingPaneController().onPanelClosed(leftView);
         }
-    }
-
-    @Override
-    public void onConversationSyncingStateHasChanged(SyncState syncState) {
-
-    }
-
-    @Override
-    public void onMenuConversationHasChanged(IConversation fromConversation) {
-
-    }
-
-    @Override
-    public void onConversationListUpdated(ConversationsList conversationsList) {
     }
 
     private void openMessageStream(Page page, Fragment fragment, String tag) {
@@ -910,7 +900,7 @@ public class RootFragment extends BaseFragment<RootFragment.Container> implement
     @Override
     public void onHideShareLocation(MessageContent.Location location) {
         if (location != null) {
-            getStoreFactory().conversationStore().sendMessage(location);
+            inject(ConversationController.class).sendMessage(location);
         }
         getChildFragmentManager().popBackStack(LocationFragment.TAG, FragmentManager.POP_BACK_STACK_INCLUSIVE);
     }

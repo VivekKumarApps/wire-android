@@ -93,7 +93,6 @@ public class LocationFragment extends BaseFragment<LocationFragment.Container> i
                                                                                           GoogleApiClient.ConnectionCallbacks,
                                                                                           GoogleApiClient.OnConnectionFailedListener,
                                                                                           OnMapReadyCallback,
-                                                                                          ConversationStoreObserver,
                                                                                           RequestPermissionsObserver,
                                                                                           OnBackPressedListener,
                                                                                           AccentColorObserver,
@@ -277,7 +276,6 @@ public class LocationFragment extends BaseFragment<LocationFragment.Container> i
         super.onStart();
         getControllerFactory().getAccentColorController().addAccentColorObserver(this);
         getControllerFactory().getRequestPermissionsController().addObserver(this);
-        getStoreFactory().conversationStore().addConversationStoreObserver(this);
         if (PermissionUtils.hasSelfPermissions(getActivity(), LOCATION_PERMISSIONS)) {
             updateLastKnownLocation();
             if (!isLocationServicesEnabled()) {
@@ -289,6 +287,21 @@ public class LocationFragment extends BaseFragment<LocationFragment.Container> i
             checkIfLocationServicesEnabled = true;
             requestCurrentLocationButton.setVisibility(View.GONE);
         }
+
+        final ConversationController ctrl = inject(ConversationController.class);
+        ctrl.onConvChanged(new Callback<ConversationController.ConversationChange>() {
+            @Override
+            public void callback(ConversationController.ConversationChange change) {
+                if (change.toConversation() != null) {
+                    ctrl.withConvLoaded(change.toConversation(), new Callback<ConversationData>() {
+                        @Override
+                        public void callback(ConversationData conversationData) {
+                            toolbarTitle.setText(conversationData.displayName());
+                        }
+                    });
+                }
+            }
+        });
     }
 
     @Override
@@ -329,7 +342,6 @@ public class LocationFragment extends BaseFragment<LocationFragment.Container> i
 
     @Override
     public void onStop() {
-        getStoreFactory().conversationStore().removeConversationStoreObserver(this);
         getControllerFactory().getRequestPermissionsController().removeObserver(this);
         getControllerFactory().getAccentColorController().removeAccentColorObserver(this);
         super.onStop();
@@ -648,30 +660,6 @@ public class LocationFragment extends BaseFragment<LocationFragment.Container> i
         canvas.drawCircle(size / 2, size / 2, innerCircleRadius, paint);
         marker = bitmap;
         return marker;
-    }
-
-    @Override
-    public void onConversationListUpdated(@NonNull ConversationsList conversationsList) {
-
-    }
-
-    @Override
-    public void onCurrentConversationHasChanged(IConversation fromConversation,
-                                                IConversation toConversation,
-                                                ConversationChangeRequester conversationChangerSender) {
-        if (toConversation != null) {
-            toolbarTitle.setText(toConversation.getName());
-        }
-    }
-
-    @Override
-    public void onConversationSyncingStateHasChanged(SyncState syncState) {
-
-    }
-
-    @Override
-    public void onMenuConversationHasChanged(IConversation fromConversation) {
-
     }
 
     @Override
