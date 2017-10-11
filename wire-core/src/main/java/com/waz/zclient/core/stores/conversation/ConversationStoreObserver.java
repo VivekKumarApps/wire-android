@@ -26,11 +26,6 @@ import com.waz.api.SyncState;
 public interface ConversationStoreObserver {
     void onConversationListUpdated(@NonNull ConversationsList conversationsList);
 
-    void onCurrentConversationHasChanged(IConversation fromConversation,
-                                         IConversation toConversation,
-                                         ConversationChangeRequester conversationChangerSender);
-
     void onConversationSyncingStateHasChanged(SyncState syncState);
 
-    void onMenuConversationHasChanged(IConversation fromConversation);
 }

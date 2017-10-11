@@ -651,7 +651,6 @@ public class ParticipantBodyFragment extends BaseFragment<ParticipantBodyFragmen
                 });
 
                 conversationController.leave(convId);
-                getStoreFactory().conversationStore().setCurrentConversationToNext(ConversationChangeRequester.LEAVE_CONVERSATION);
                 if (LayoutSpec.isTablet(getActivity())) {
                     getControllerFactory().getConversationScreenController().hideParticipants(false, true);
                 }

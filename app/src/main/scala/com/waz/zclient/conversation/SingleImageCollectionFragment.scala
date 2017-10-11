@@ -34,7 +34,6 @@ import com.waz.service.messages.MessageAndLikes
 import com.waz.threading.Threading
 import com.waz.utils.events._
 import com.waz.zclient._
-import com.waz.zclient.controllers.global.SelectionController
 import com.waz.zclient.conversation.CollectionController.{AllContent, ContentType, Images}
 import com.waz.zclient.conversation.SingleImageCollectionFragment.ImageSwipeAdapter
 import com.waz.zclient.messages.RecyclerCursor

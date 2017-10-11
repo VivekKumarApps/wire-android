@@ -37,7 +37,6 @@ import com.waz.zclient.controllers.accentcolor.AccentColorObserver;
 import com.waz.zclient.conversation.ConversationController;
 import com.waz.zclient.core.stores.connect.ConnectStoreObserver;
 import com.waz.zclient.core.stores.connect.IConnectStore;
-import com.waz.zclient.core.stores.conversation.OnConversationLoadedListener;
 import com.waz.zclient.pages.BaseFragment;
 import com.waz.zclient.pages.main.participants.ProfileAnimation;
 import com.waz.zclient.pages.main.participants.ProfileSourceAnimation;

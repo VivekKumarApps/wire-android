@@ -131,7 +131,6 @@ public class OptionsMenuFragment extends BaseFragment<OptionsMenuFragment.Contai
 
         if (!TextUtils.isEmpty(conversationId)) {
             connectConversation(new ConvId(conversationId));
-            getStoreFactory().conversationStore().loadMenuConversation(conversationId);
         }
 
         getContainer().getOptionsMenuControl().setCallback(this);

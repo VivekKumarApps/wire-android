@@ -31,7 +31,6 @@ import com.waz.service.ZMessaging
 import com.waz.threading.Threading
 import com.waz.utils.events.{EventContext, Signal}
 import com.waz.utils.returning
-import com.waz.zclient.controllers.global.SelectionController
 import com.waz.zclient.conversation.CollectionAdapter._
 import com.waz.zclient.conversation.CollectionController.{ContentType, _}
 import com.waz.zclient.messages.RecyclerCursor

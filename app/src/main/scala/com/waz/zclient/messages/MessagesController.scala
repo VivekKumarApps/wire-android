@@ -22,7 +22,6 @@ import android.view.View
 import com.waz.model.{ConvId, MessageData, MessageId}
 import com.waz.service.ZMessaging
 import com.waz.utils.events.{EventContext, EventStream, Signal}
-import com.waz.zclient.controllers.global.SelectionController
 import com.waz.zclient.controllers.navigation._
 import com.waz.zclient.pages.main.conversationpager.controller.{ISlidingPaneController, SlidingPaneObserver}
 import com.waz.zclient.utils.ViewUtils

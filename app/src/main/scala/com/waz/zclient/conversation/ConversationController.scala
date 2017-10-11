@@ -20,7 +20,7 @@ package com.waz.zclient.conversation
 import android.content.Context
 import com.waz.api.{EphemeralExpiration, Verification}
 import com.waz.model.ConversationData.ConversationType
-import com.waz.model.{ConvId, ConversationData, UserData, UserId}
+import com.waz.model._
 import com.waz.service.ZMessaging
 import com.waz.threading.{CancellableFuture, Threading}
 import com.waz.utils.events.{EventContext, EventStream, Signal}
@@ -35,17 +35,22 @@ import com.waz.api
 import com.waz.api.MessageContent.Asset.ErrorHandler
 import com.waz.api.impl.{AssetForUpload, ImageAsset}
 import com.waz.model.otr.Client
-import com.waz.utils.Serialized
+import com.waz.utils.{Serialized, returning}
 import com.waz.utils.wrappers.URI
+import com.waz.zclient.core.stores.IStoreFactory
+import org.threeten.bp.Instant
 
 import scala.concurrent.Future
 import scala.collection.JavaConverters._
+import scala.concurrent.duration._
+import com.waz.utils._
 
 class ConversationController(implicit injector: Injector, context: Context, ec: EventContext) extends Injectable {
   import Threading.Implicits.Ui
 
   private val zms = inject[Signal[ZMessaging]]
   private val userAccounts = inject[UserAccountsController]
+  private lazy val convStore = inject[IStoreFactory].conversationStore
   private val storage = zms.map(_.convsStorage)
   private val stats = zms.map(_.convsStats)
 
@@ -87,6 +92,7 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
     z <- zms
     conv <- z.convsStorage.optSignal(convId)
   } yield conv
+
 
   def loadConv(id: ConvId): Future[Option[ConversationData]] = storage.head.flatMap(_.get(id))
 
@@ -160,7 +166,10 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
   def sendMessage(convId: ConvId, uri: URI, errorHandler: ErrorHandler): Future[Unit] = zms.head.map { _.convsUi.sendMessage(convId, uri, errorHandler) }
   def sendMessage(audioAsset: AssetForUpload, errorHandler: ErrorHandler): Future[Unit] = selectedConvId.head.map { convId => sendMessage(convId, audioAsset, errorHandler) }
   def sendMessage(convId: ConvId, audioAsset: AssetForUpload, errorHandler: ErrorHandler): Future[Unit] = zms.head.map { _.convsUi.sendMessage(convId, audioAsset, errorHandler) }
-  def sendMessage(text: String): Future[Unit] = selectedConvId.head.map { convId => sendMessage(convId, text) }
+  def sendMessage(text: String): Future[Unit] = selectedConvId.head.map { convId =>
+    verbose(s"sendMessage($text) with selected conv id $convId")
+    sendMessage(convId, text)
+  }
   def sendMessage(convId: ConvId, text: String): Future[Unit] = zms.head.map { _.convsUi.sendMessage(convId, text) }
   def sendMessage(text: String, mentions: Set[UserId]): Future[Unit] = selectedConvId.head.map { convId => sendMessage(convId, text, mentions) }
   def sendMessage(convId: ConvId, text: String, mentions: Set[UserId]): Future[Unit] = zms.head.map { _.convsUi.sendMessage(convId, text, mentions) }
@@ -184,17 +193,33 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
   def addMembers(id: ConvId, users: java.util.List[UserId]): Unit = addMembers(id, users.asScala.toSet) // TODO: remove when not used anymore
   def addMembers(id: ConvId, users: Set[UserId]): Future[Unit] = zms.head.map { _.convsUi.addConversationMembers(id, users.toSeq) }
 
-  def removeMember(id: ConvId, user: UserId): Future[Unit] = zms.head.map { _.convsUi.removeConversationMember(id, user) }
+  def removeMember(user: UserId): Future[Unit] = for {
+    z <- zms.head
+    id <- selectedConvId.head
+  } yield z.convsUi.removeConversationMember(id, user)
 
-  def leave(id: ConvId): CancellableFuture[Option[ConversationData]] = Serialized("Conversations", id) { CancellableFuture.lift( zms.head.flatMap { _.convsUi.leaveConversation(id) } ) }
+  def leave(convId: ConvId): CancellableFuture[Option[ConversationData]] =
+    returning (Serialized("Conversations", convId) { CancellableFuture.lift( zms.head.flatMap { _.convsUi.leaveConversation(convId) } ) } ) { _ =>
+      selectedConvId.head.map { id => if (id == convId) setCurrentConversationToNext(ConversationChangeRequester.LEAVE_CONVERSATION) }
+    }
 
-  def setArchived(id: ConvId, archived: Boolean): Future[Unit] = zms.head.map { _.convsUi.setConversationArchived(id, archived) }
+  def nextConversation: Future[Option[ConvId]] = selectedConvId.head.map { id => convStore.nextConversation(id) }
+
+  def setCurrentConversationToNext(requester: ConversationChangeRequester): Future[Unit] =
+    nextConversation.map { convId => selectConv(convId, requester)}
+
+  def archive(convId: ConvId, archive: Boolean): Unit = {
+    zms.head.map { _.convsUi.setConversationArchived(convId, archive) }
+    selectedConvId.head.map { id => if (id == convId) CancellableFuture.delayed(ConversationController.ARCHIVE_DELAY){
+      if (!archive) selectConv(convId, ConversationChangeRequester.CONVERSATION_LIST_UNARCHIVED_CONVERSATION)
+      else setCurrentConversationToNext(ConversationChangeRequester.ARCHIVED_RESULT)
+    }}
+  }
 
   def setMuted(id: ConvId, muted: Boolean): Future[Unit] = zms.head.map { _.convsUi.setConversationMuted(id, muted) }
 
   def delete(id: ConvId, alsoLeave: Boolean): CancellableFuture[Option[ConversationData]] =
-    if (alsoLeave) leave(id).flatMap(_ => clear(id))
-    else clear(id)
+    if (alsoLeave) leave(id).flatMap(_ => clear(id)) else clear(id)
 
   def clear(id: ConvId): CancellableFuture[Option[ConversationData]] = Serialized("Conversations", id) { CancellableFuture.lift( zms.head.flatMap { _.convsUi.clearConversation(id) } ) }
 
@@ -212,9 +237,56 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
     }
 
   def knock(id: ConvId): Unit = zms(_.convsUi.knock(id))
+
+  object messages {
+
+    val ActivityTimeout = 3.seconds
+
+    /**
+      * Currently focused message.
+      * There is only one focused message, switched by tapping.
+      */
+    val focused = Signal(Option.empty[MessageId])
+
+    /**
+      * Tracks last focused message together with last action time.
+      * It's not cleared when message is unfocused, and toggleFocus takes timeout into account.
+      * This is used to decide if timestamp view should be shown in footer when message has likes.
+      */
+    val lastActive = Signal((MessageId.Empty, Instant.EPOCH)) // message showing status info
+
+    selectedConv.onChanged { c =>
+      verbose(s"selected conv changed: $c")
+      clear()
+    }
+
+    def clear() = {
+      focused ! None
+      lastActive ! (MessageId.Empty, Instant.EPOCH)
+    }
+
+    def isFocused(id: MessageId): Boolean = focused.currentValue.flatten.contains(id)
+
+    /**
+      * Switches current msg focus state to/from given msg.
+      */
+    def toggleFocused(id: MessageId) = {
+      verbose(s"toggleFocused($id)")
+      focused mutate {
+        case Some(`id`) => None
+        case _ => Some(id)
+      }
+      lastActive.mutate {
+        case (`id`, t) if !ActivityTimeout.elapsedSince(t) => (id, Instant.now - ActivityTimeout)
+        case _ => (id, Instant.now)
+      }
+    }
+  }
 }
 
 object ConversationController {
+  val ARCHIVE_DELAY = 500.millis
+
   case class ConversationChange(from: Option[ConvId], to: Option[ConvId], requester: ConversationChangeRequester) {
     def fromConversation(): ConvId = from.orNull // TODO: remove when not used anymore
     def toConversation(): ConvId = to.orNull // TODO: remove when not used anymore

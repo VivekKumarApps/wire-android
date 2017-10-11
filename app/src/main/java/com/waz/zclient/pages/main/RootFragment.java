@@ -414,11 +414,7 @@ public class RootFragment extends BaseFragment<RootFragment.Container> implement
 
     @Override
     public void dismissInboxFragment() {
-        IConversation nextConversation = getStoreFactory().conversationStore().getNextConversation();
-        if (nextConversation == null) {
-            return;
-        }
-        inject(ConversationController.class).selectConv(new ConvId(nextConversation.getId()), ConversationChangeRequester.START_CONVERSATION);
+        inject(ConversationController.class).setCurrentConversationToNext(ConversationChangeRequester.START_CONVERSATION);
     }
 
     @Override

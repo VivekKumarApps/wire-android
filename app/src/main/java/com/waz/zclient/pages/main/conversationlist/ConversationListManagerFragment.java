@@ -297,12 +297,6 @@ public class ConversationListManagerFragment extends BaseFragment<ConversationLi
         }
     }
 
-    @Override
-    public void onCurrentConversationHasChanged(IConversation fromConversation,
-                                                IConversation toConversation,
-                                                ConversationChangeRequester conversationChangerSender) {
-    }
-
     private void stripToConversationList() {
         if (LayoutSpec.isTablet(getActivity())) {
             return;
@@ -334,11 +328,6 @@ public class ConversationListManagerFragment extends BaseFragment<ConversationLi
             default:
                 listLoadingIndicatorView.hide();
         }
-    }
-
-    @Override
-    public void onMenuConversationHasChanged(IConversation fromConversation) {
-
     }
 
     private void animateOnIncomingCall() {
@@ -820,23 +809,23 @@ public class ConversationListManagerFragment extends BaseFragment<ConversationLi
     }
 
     @Override
-    public void onOptionsItemClicked(ConvId convId, User user, OptionsMenuItem item) {
-        ConversationController conversationController = inject(ConversationController.class);
+    public void onOptionsItemClicked(final ConvId convId, User user, OptionsMenuItem item) {
+        final ConversationController conversationController = inject(ConversationController.class);
         switch (item) {
             case ARCHIVE:
-                conversationController.setArchived(convId, true);
                 conversationController.withSelectedConv(new Callback<ConversationData>() {
                     @Override
                     public void callback(ConversationData conversationData) {
+                        conversationController.archive(convId, true);
                         inject(GlobalTrackingController.class).tagEvent(new ArchivedConversationEvent(conversationData.convType().name()));
                     }
                 });
                 break;
             case UNARCHIVE:
-                conversationController.setArchived(convId, false);
                 conversationController.withSelectedConv(new Callback<ConversationData>() {
                     @Override
                     public void callback(ConversationData conversationData) {
+                        conversationController.archive(convId, false);
                         inject(GlobalTrackingController.class).tagEvent(new UnarchivedConversationEvent(conversationData.convType().name()));
                     }
                 });
@@ -996,7 +985,6 @@ public class ConversationListManagerFragment extends BaseFragment<ConversationLi
                 });
 
                 conversationController.leave(convId);
-                getStoreFactory().conversationStore().setCurrentConversationToNext(ConversationChangeRequester.LEAVE_CONVERSATION);
             }
 
             @Override
@@ -1082,10 +1070,6 @@ public class ConversationListManagerFragment extends BaseFragment<ConversationLi
                             ConversationType.getValue(currentConv.convType()),
                             DeleteConversationEvent.Context.LIST,
                             DeleteConversationEvent.Response.DELETE));
-
-                        if (convId.equals(currentConv.id())) {
-                            getStoreFactory().conversationStore().setCurrentConversationToNext(ConversationChangeRequester.DELETE_CONVERSATION);
-                        }
                     }
                 };
 
@@ -1131,9 +1115,9 @@ public class ConversationListManagerFragment extends BaseFragment<ConversationLi
                 }
 
                 getStoreFactory().connectStore().blockUser(user);
-                boolean blockingCurrentConversation = user.getConversation().getId().equals(inject(ConversationController.class).getSelectedConvId());
+                boolean blockingCurrentConversation = user.getConversation().getId().equals(inject(ConversationController.class).getSelectedConvId().str());
                 if (blockingCurrentConversation) {
-                    getStoreFactory().conversationStore().setCurrentConversationToNext(ConversationChangeRequester.BLOCK_USER);
+                    inject(ConversationController.class).setCurrentConversationToNext(ConversationChangeRequester.BLOCK_USER);
                 }
                 ((BaseActivity) getActivity()).injectJava(GlobalTrackingController.class).tagEvent(new BlockingEvent(BlockingEvent.ConformationResponse.BLOCK));
             }

@@ -37,7 +37,7 @@ import com.waz.zclient.controllers.camera.ICameraController
 import com.waz.zclient.controllers.deviceuser.IDeviceUserController
 import com.waz.zclient.controllers.drawing.IDrawingController
 import com.waz.zclient.controllers.giphy.IGiphyController
-import com.waz.zclient.controllers.global.{AccentColorController, KeyboardController, PasswordController, SelectionController}
+import com.waz.zclient.controllers.global.{AccentColorController, KeyboardController, PasswordController}
 import com.waz.zclient.controllers.globallayout.IGlobalLayoutController
 import com.waz.zclient.controllers.location.ILocationController
 import com.waz.zclient.controllers.navigation.INavigationController
@@ -102,7 +102,6 @@ object WireApplication {
     bind [PasswordController]      to new PasswordController()
     bind [GlobalCallingController] to new GlobalCallingController()
     bind [GlobalCameraController]  to new GlobalCameraController(new AndroidCameraFactory)
-    bind [SelectionController]     to new SelectionController()
     bind [SoundController]         to new SoundController
     bind [ThemeController]         to new ThemeController
 
@@ -204,7 +203,7 @@ class WireApplication extends MultiDexApplication with WireContext with Injectab
   def ensureInitialized() = {
     if (storeFactory == null) {
       //TODO initialization of ZMessaging happens here - make this more explicit?
-      storeFactory = new ScalaStoreFactory(getApplicationContext, inject[SelectionController])
+      storeFactory = new ScalaStoreFactory(getApplicationContext)
       storeFactory.zMessagingApiStore.getApi
     }
 

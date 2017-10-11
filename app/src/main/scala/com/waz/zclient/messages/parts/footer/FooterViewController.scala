@@ -27,7 +27,8 @@ import com.waz.service.messages.MessageAndLikes
 import com.waz.threading.CancellableFuture
 import com.waz.utils._
 import com.waz.utils.events.{ClockSignal, EventContext, Signal}
-import com.waz.zclient.controllers.global.{AccentColorController, SelectionController}
+import com.waz.zclient.controllers.global.AccentColorController
+import com.waz.zclient.conversation.ConversationController
 import com.waz.zclient.messages.MessageView.MsgBindOptions
 import com.waz.zclient.messages.{LikesController, UsersController}
 import com.waz.zclient.utils.ContextUtils._
@@ -45,7 +46,7 @@ class FooterViewController(implicit inj: Injector, context: Context, ec: EventCo
 
   val zms = inject[Signal[ZMessaging]]
   val accents = inject[AccentColorController]
-  val selection = inject[SelectionController].messages
+  val selection = inject[ConversationController].messages
   val signals = inject[UsersController]
   val likesController = inject[LikesController]
 

@@ -20,14 +20,13 @@ package com.waz.zclient.controllers
 import android.content.Context
 import com.waz.ZLog._
 import com.waz.ZLog.ImplicitTag._
-import com.waz.api.IConversation
 import com.waz.model.ConversationData.ConversationType
 import com.waz.model._
 import com.waz.service.ZMessaging
 import com.waz.threading.Threading
 import com.waz.utils.events.{EventContext, Signal}
 import com.waz.zclient.conversation.ConversationController
-import com.waz.zclient.core.stores.conversation.{ConversationChangeRequester, OnConversationLoadedListener}
+import com.waz.zclient.core.stores.conversation.ConversationChangeRequester
 import com.waz.zclient.utils.Callback
 import com.waz.zclient.{BaseActivity, Injectable, Injector}
 

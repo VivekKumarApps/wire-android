@@ -24,6 +24,7 @@ import com.waz.api.ImageAsset
 import com.waz.api.MessageContent
 import com.waz.api.SyncState
 import com.waz.api.User
+import com.waz.model.ConvId
 import com.waz.zclient.core.stores.IStore
 
 
@@ -45,73 +46,14 @@ trait IConversationStore extends IStore {
   def removeConversationStoreObserver(conversationStoreObserver: ConversationStoreObserver): Unit
 
   /**
-   * archive conversation
-   * @param conversation
-   * @param archive
-   */
-  def archive(conversation: IConversation, archive: Boolean): Unit
-
-  /**
-   * Leaves conversation
-   * @param conversation
-   */
-  def leave(conversation: IConversation): Unit
-
-  /**
-   * Deletes conversation
-   * @param conversation
-   */
-  def deleteConversation(conversation: IConversation, leaveConversation: Boolean): Unit
-
-
-  /**
-   * gets the current conversation
-   * @return
-   */
-  def getCurrentConversation(): IConversation = currentConversation.getOrElse(null) // for Java
-  def currentConversation: Option[IConversation] // for Scala
-
-  /**
-   * sets the current conversation so that the message fragment gets informed
-    * @param conversation
-   * @param conversationChangerSender
-   */
-  def setCurrentConversation(conversation: Option[IConversation], conversationChangerSender: ConversationChangeRequester): Unit // for Scala
-
-  /**
-   * Same as calling {@code setCurrentConversation(getNextConversation())}
-   * @param requester
-   */
-  def setCurrentConversationToNext(requester: ConversationChangeRequester): Unit
-
-  /**
    * For use when archiving a conversation - you need to set a new current conversation
    *
    * @return IConversation - if the below conversation is not archived this will be returned,
    * otherwise the conversation above
    */
-  def getNextConversation(): IConversation = nextConversation.getOrElse(null) // for Java
-  protected def nextConversation: Option[IConversation] // for Scala
+  def nextConversation(convId: ConvId): Option[ConvId]
 
   def getConversation(conversationId: String): IConversation
-
-  def sendMessage(message: String): Unit
-
-  def sendMessage(imageAsset: ImageAsset): Unit
-
-  def sendMessage(location: MessageContent.Location): Unit
-
-  def sendMessage(assetForUpload: AssetForUpload, errorHandler: MessageContent.Asset.ErrorHandler): Unit
-
-  def sendMessage(audioAssetForUpload: AudioAssetForUpload, errorHandler: MessageContent.Asset.ErrorHandler): Unit
-
-  def createGroupConversation(users: java.lang.Iterable[_ <: User], conversationChangerSender: ConversationChangeRequester): Unit
-
-  def loadCurrentConversation(onConversationLoadedListener: OnConversationLoadedListener): Unit
-
-  def loadConversation(conversationId: String, onConversationLoadedListener: OnConversationLoadedListener): Unit
-
-  def loadMenuConversation(conversationId: String): Unit
 
   def numberOfActiveConversations: Int
 

@@ -198,8 +198,8 @@ public class PendingConnectRequestManagerFragment extends BaseFragment<PendingCo
     }
 
     @Override
-    public void onOptionsItemClicked(ConvId convId, User user, OptionsMenuItem item) {
-        ConversationController ctrl = inject(ConversationController.class);
+    public void onOptionsItemClicked(final ConvId convId, User user, OptionsMenuItem item) {
+        final ConversationController ctrl = inject(ConversationController.class);
         switch (item) {
             case BLOCK:
                 showBlockUserConfirmation(user);
@@ -208,19 +208,19 @@ public class PendingConnectRequestManagerFragment extends BaseFragment<PendingCo
                 user.unblock();
                 break;
             case ARCHIVE:
-                ctrl.setArchived(convId, true);
                 ctrl.withConvLoaded(convId, new Callback<ConversationData>() {
                     @Override
                     public void callback(ConversationData conv) {
+                        ctrl.archive(convId, true);
                         inject(GlobalTrackingController.class).tagEvent(new ArchivedConversationEvent(conv.convType().name()));
                     }
                 });
                 break;
             case UNARCHIVE:
-                ctrl.setArchived(convId, false);
                 ctrl.withConvLoaded(convId, new Callback<ConversationData>() {
                     @Override
                     public void callback(ConversationData conv) {
+                        ctrl.archive(convId, false);
                         inject(GlobalTrackingController.class).tagEvent(new UnarchivedConversationEvent(conv.convType().name()));
                     }
                 });
@@ -249,7 +249,7 @@ public class PendingConnectRequestManagerFragment extends BaseFragment<PendingCo
                 getStoreFactory().connectStore().blockUser(user);
                 switch (userRequester) {
                     case CONVERSATION:
-                        getStoreFactory().conversationStore().setCurrentConversationToNext(ConversationChangeRequester.BLOCK_USER);
+                        inject(ConversationController.class).setCurrentConversationToNext(ConversationChangeRequester.BLOCK_USER);
                         break;
                     case SEARCH:
                     case POPOVER:

@@ -39,7 +39,7 @@ class OptionsMenuController(implicit injector: Injector, context: Context, ec: E
   convId.flatMap {
     case Some(id)   => convController.changeWithinConv(id)
     case _          => Signal.const(Option.empty[ConversationData])
-  } {
+  }.onUi {
     case Some(conv) => convChangedCallback.foreach(_.callback(conv))
     case _          =>
   }

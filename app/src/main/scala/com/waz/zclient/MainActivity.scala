@@ -43,7 +43,7 @@ import com.waz.zclient.calling.controllers.CallPermissionsController
 import com.waz.zclient.common.controllers.PermissionsController
 import com.waz.zclient.controllers.accentcolor.AccentColorChangeRequester
 import com.waz.zclient.controllers.calling.CallingObserver
-import com.waz.zclient.controllers.global.{AccentColorController, SelectionController}
+import com.waz.zclient.controllers.global.AccentColorController
 import com.waz.zclient.controllers.navigation.{NavigationControllerObserver, Page}
 import com.waz.zclient.controllers.tracking.events.connect.AcceptedGenericInviteEvent
 import com.waz.zclient.controllers.tracking.events.exception.ExceptionEvent
