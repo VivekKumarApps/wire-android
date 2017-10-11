@@ -18,11 +18,13 @@
 package com.waz.zclient.pages.main.profile.preferences.pages
 
 import android.content.{Context, Intent}
+import android.net.Uri
 import android.os.Bundle
 import android.util.AttributeSet
 import android.view.View
 import android.widget.LinearLayout
 import com.waz.ZLog
+import com.waz.model.AccountData
 import com.waz.service.ZMessaging
 import com.waz.threading.Threading
 import com.waz.utils.events.{EventContext, EventStream, Signal}
@@ -38,6 +40,7 @@ trait SettingsView {
   def setInviteButtonEnabled(enabled: Boolean): Unit
   def startInviteIntent(name: String, handle: String): Unit
   def setDevSettingsEnabled(enabled: Boolean): Unit
+  def setManageTeamEnabled(enabled: Boolean): Unit
 }
 
 class SettingsViewImpl(context: Context, attrs: AttributeSet, style: Int) extends LinearLayout(context, attrs, style) with SettingsView with ViewHelper {
@@ -49,6 +52,7 @@ class SettingsViewImpl(context: Context, attrs: AttributeSet, style: Int) extend
   val navigator = inject[BackStackNavigator]
 
   val accountButton = findById[TextButton](R.id.settings_account)
+  val teamButtom = findById[TextButton](R.id.settings_team)
   val devicesButton = findById[TextButton](R.id.settings_devices)
   val optionsButton = findById[TextButton](R.id.settings_options)
   val advancedButton = findById[TextButton](R.id.settings_advanced)
@@ -59,6 +63,8 @@ class SettingsViewImpl(context: Context, attrs: AttributeSet, style: Int) extend
   val inviteButton = findById[FlatWireButton](R.id.profile_invite)
 
   accountButton.onClickEvent.on(Threading.Ui) { _ => navigator.goTo(AccountBackStackKey()) }
+  teamButtom.onClickEvent.on(Threading.Ui) { _ => context.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(context.getString(R.string.pref_manage_team_url)))) }
+  teamButtom.setVisible(false)
   devicesButton.onClickEvent.on(Threading.Ui) { _ => navigator.goTo(DevicesBackStackKey())}
   optionsButton.onClickEvent.on(Threading.Ui) { _ => navigator.goTo(OptionsBackStackKey()) }
   advancedButton.onClickEvent.on(Threading.Ui) { _ => navigator.goTo(AdvancedBackStackKey()) }
@@ -85,6 +91,8 @@ class SettingsViewImpl(context: Context, attrs: AttributeSet, style: Int) extend
     devButton.setVisible(enabled)
     avsButton.setVisible(enabled)
   }
+
+  override def setManageTeamEnabled(enabled: Boolean): Unit = teamButtom.setVisible(enabled)
 }
 
 case class SettingsBackStackKey(args: Bundle = new Bundle()) extends BackStackKey(args) {
@@ -126,6 +134,13 @@ class SettingsViewController(view: SettingsView)(implicit inj: Injector, ec: Eve
 
   team.onUi { team =>
     view.setInviteButtonEnabled(team.isEmpty)
+  }
+
+  val account = ZMessaging.currentAccounts.activeAccount.collect { case Some(accountData) if accountData.userId.isDefined => accountData}
+
+  account { acc =>
+    // TODO check if this permission covers "being admin"
+    view.setManageTeamEnabled(acc.selfPermissions.contains(AccountData.Permission.AddTeamMember))
   }
 
   view.setDevSettingsEnabled(BuildConfig.DEVELOPER_FEATURES_ENABLED)

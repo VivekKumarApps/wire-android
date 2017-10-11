@@ -448,6 +448,14 @@
     <string name="menu_help">HELP</string>
     <string name="menu_logout">LOG OUT</string>
 
+    <!-- Manage Team -->
+    <string name="pref_manage_team_title">Manage Team</string>
+    <!-- TODO set correct URL -->
+    <!-- TODO set correct URL -->
+    <string name="pref_manage_team_url">https://support.wire.com</string>
+    <!-- TODO set correct URL -->
+    <!-- TODO set correct URL -->
+
     <!-- About screen -->
     <string name="about_privacy_policy">Privacy Policy</string>
     <string name="about_third_party_licences">Licences</string>
