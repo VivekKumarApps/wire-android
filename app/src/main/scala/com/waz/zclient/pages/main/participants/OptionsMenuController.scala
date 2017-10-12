@@ -24,6 +24,8 @@ import com.waz.utils.events.{EventContext, Signal}
 import com.waz.zclient.conversation.ConversationController
 import com.waz.zclient.{Injectable, Injector}
 import com.waz.zclient.utils.Callback
+import com.waz.ZLog._
+import com.waz.ZLog.ImplicitTag._
 
 class OptionsMenuController(implicit injector: Injector, context: Context, ec: EventContext) extends Injectable {
   import Threading.Implicits.Ui
@@ -40,7 +42,7 @@ class OptionsMenuController(implicit injector: Injector, context: Context, ec: E
     case Some(id)   => convController.changeWithinConv(id)
     case _          => Signal.const(Option.empty[ConversationData])
   }.onUi {
-    case Some(conv) => convChangedCallback.foreach(_.callback(conv))
+    case Some(conv) => verbose(s"CC calling the callback for ${conv.id}"); convChangedCallback.foreach(_.callback(conv))
     case _          =>
   }
 
@@ -56,5 +58,4 @@ class OptionsMenuController(implicit injector: Injector, context: Context, ec: E
     case _        =>
   }
 
-  def getOtherParticipant(convId: ConvId): UserId = ConversationController.getOtherParticipantForOneToOneConv(convId)
 }

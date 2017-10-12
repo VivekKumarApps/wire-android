@@ -367,7 +367,7 @@ public class ParticipantHeaderFragment extends BaseFragment<ParticipantHeaderFra
     };
 
     private void resetName() {
-        inject(ConversationController.class).withSelectedConv(new Callback<ConversationData>() {
+        inject(ConversationController.class).withCurrentConv(new Callback<ConversationData>() {
             @Override
             public void callback(ConversationData conversationData) {
                 headerReadOnlyTextView.setText(conversationData.displayName());

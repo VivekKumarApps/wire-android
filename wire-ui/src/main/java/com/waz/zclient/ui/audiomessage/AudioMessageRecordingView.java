@@ -47,6 +47,7 @@ import com.waz.zclient.utils.StringUtils;
 import com.waz.zclient.utils.ViewUtils;
 import org.threeten.bp.Duration;
 import org.threeten.bp.Instant;
+import timber.log.Timber;
 
 public class AudioMessageRecordingView extends FrameLayout implements View.OnClickListener {
 
@@ -141,6 +142,7 @@ public class AudioMessageRecordingView extends FrameLayout implements View.OnCli
                 }
             } else {
                 AudioMessageRecordingView.this.audioAssetForUpload = audioAssetForUpload;
+                Timber.d("setting up playback controls");
                 playbackControls = audioAssetForUpload.getPlaybackControls();
                 playbackControlsModelObserver.setAndUpdate(playbackControls);
             }
@@ -149,6 +151,7 @@ public class AudioMessageRecordingView extends FrameLayout implements View.OnCli
         @Override
         public void onCancel() {
             playbackControlsModelObserver.clear();
+            Timber.d("playback controls set to null");
             playbackControls = null;
         }
     };
@@ -234,7 +237,9 @@ public class AudioMessageRecordingView extends FrameLayout implements View.OnCli
 
     @Override
     public void onClick(View view) {
+        Timber.d("onClick");
         if (view.getId() == R.id.fl__audio_message__recording__cancel_button_container) {
+            Timber.d("cancel button, slideControlState = " + slideControlState + ", callback is " + (callback != null? "set":"null"));
             // CANCEL BUTTON
             if (slideControlState == SlideControlState.RECORDING ||
                 callback == null) {
@@ -245,6 +250,7 @@ public class AudioMessageRecordingView extends FrameLayout implements View.OnCli
             }
             callback.onCancelledAudioMessageRecording();
         } else if (view.getId() == R.id.fl__audio_message__recording__send_button_container) {
+            Timber.d("send button");
             // SEND BUTTON
             if (recordingControls == null ||
                 callback == null ||
@@ -256,6 +262,7 @@ public class AudioMessageRecordingView extends FrameLayout implements View.OnCli
             }
             callback.onSendAudioMessage(audioAssetForUpload, null, false);
         } else if (view.getId() == R.id.fl__audio_message__recording__bottom_button_container) {
+            Timber.d("bottom button");
             if (playbackControls == null) {
                 return;
             }

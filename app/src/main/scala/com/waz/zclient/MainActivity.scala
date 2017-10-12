@@ -332,7 +332,7 @@ class MainActivity extends BaseActivity
         verbose(s"setting conversation: $convId")
         conversationController.selectConv(convId, ConversationChangeRequester.INTENT).map { _ =>
           conversationController.setEphemeralExpiration(exp)
-          if (call) conversationController.withSelectedConv { conv => startCall(withVideo = false, conv) }
+          if (call) conversationController.withCurrentConv { conv => startCall(withVideo = false, conv) }
         }
     } (Threading.Ui).future
 
@@ -443,7 +443,7 @@ class MainActivity extends BaseActivity
       case MESSAGE_STREAM =>
         (for {
           zms <- zms
-          Some(conv) <- conversationController.selectedConv
+          Some(conv) <- conversationController.currentConv
           withOtto <- Signal.future(GlobalTrackingController.isOtto(conv, zms.usersStorage))
         } yield if (withOtto) ApplicationScreen.CONVERSATION__BOT else ApplicationScreen.CONVERSATION ).map(globalTracking.onApplicationScreen(_))
 
@@ -510,7 +510,7 @@ class MainActivity extends BaseActivity
 
   def onInitialized(self: Self) = enterApplication(self)
 
-  def onStartCall(withVideo: Boolean) = conversationController.withSelectedConv { conv =>
+  def onStartCall(withVideo: Boolean) = conversationController.withCurrentConv { conv =>
     handleOnStartCall(withVideo, conv)
     globalTracking.tagEvent(OpenedMediaActionEvent.cursorAction(if (withVideo) OpenedMediaAction.VIDEO_CALL else OpenedMediaAction.AUDIO_CALL, conv, false))
   }

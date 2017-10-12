@@ -36,7 +36,7 @@ class MessagesController()(implicit injector: Injector, ev: EventContext) extend
 
   val zms = inject[Signal[ZMessaging]]
   val context = inject[Context]
-  val currentConvId = inject[ConversationController].selectedConvId
+  val currentConvId = inject[ConversationController].currentConvId
   val navigationController = inject[INavigationController]
   val slidingPaneController = inject[ISlidingPaneController]
 

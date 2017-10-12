@@ -45,6 +45,7 @@ import com.waz.zclient.pages.main.profile.camera.CameraContext
 import com.waz.zclient.ui.utils.KeyboardUtils
 import com.waz.zclient.utils.LayoutSpec
 import com.waz.zclient.ui.cursor.{CursorMenuItem => JCursorMenuItem}
+import com.waz.ZLog._
 import com.waz.ZLog.ImplicitTag._
 import com.waz.zclient.conversation.ConversationController
 
@@ -56,7 +57,7 @@ class CursorController(implicit inj: Injector, ctx: Context, evc: EventContext) 
 
   val zms = inject[Signal[ZMessaging]]
   val conversationController = inject[ConversationController]
-  val conv = conversationController.selectedConv.collect { case Some(conv) => conv }
+  val conv = conversationController.currentConv.collect { case Some(conv) => conv }
 
   val keyboard = Signal[KeyboardState](KeyboardState.Hidden)
   val editingMsg = Signal(Option.empty[MessageData])
@@ -117,7 +118,7 @@ class CursorController(implicit inj: Injector, ctx: Context, evc: EventContext) 
   // notify SE about typing state
   enteredText { text =>
     for {
-      convId <- conversationController.selectedConvId
+      convId <- conversationController.currentConvId
       typing <- zms.map(_.typing)
     } {
       if (text.isEmpty) typing.selfClearedInput(convId)
@@ -127,19 +128,22 @@ class CursorController(implicit inj: Injector, ctx: Context, evc: EventContext) 
 
   val typingIndicatorVisible = for {
     typing <- zms.map(_.typing)
-    convId <- conversationController.selectedConvId
+    convId <- conversationController.currentConvId
     users <- typing.typingUsers(convId)
   } yield
     users.nonEmpty
 
   keyboard.on(Threading.Ui) {
     case KeyboardState.Shown =>
+      verbose(s"CC keyboard shown")
       cursorCallback.foreach(_.hideExtendedCursor())
       KeyboardUtils.showKeyboard(activity)
     case KeyboardState.Hidden =>
+      verbose(s"CC keyboard hidden")
       cursorCallback.foreach(_.hideExtendedCursor())
       KeyboardUtils.closeKeyboardIfShown(activity)
     case KeyboardState.ExtendedCursor(tpe) =>
+      verbose(s"CC extended cursor 1")
       KeyboardUtils.closeKeyboardIfShown(activity)
 
       if (LayoutSpec.isTablet(ctx) && tpe == ExtendedCursorContainer.Type.IMAGES) {
@@ -147,6 +151,7 @@ class CursorController(implicit inj: Injector, ctx: Context, evc: EventContext) 
         keyboard ! KeyboardState.Hidden
       } else {
         permissions.withPermissions(keyboardPermissions(tpe): _*) {
+          verbose(s"CC extended cursor 2")
           cursorCallback.foreach(_.openExtendedCursor(tpe))
         }
       }
@@ -158,6 +163,7 @@ class CursorController(implicit inj: Injector, ctx: Context, evc: EventContext) 
   }
 
   def submit(msg: String): Boolean = {
+    verbose(s"CC submit($msg)")
     if (isEditingMessage.currentValue.contains(true)) {
       onApproveEditMessage()
       return true
@@ -165,11 +171,12 @@ class CursorController(implicit inj: Injector, ctx: Context, evc: EventContext) 
     if (TextUtils.isEmpty(msg.trim)) return false
 
     for {
-      cId <- conversationController.selectedConvId
+      cId <- conversationController.currentConvId.head
       cs <- zms.head.map(_.convsUi)
       m <- cs.sendMessage(cId, new MessageContent.Text(msg))
     } {
       m foreach { msg =>
+        verbose(s"CC sending $msg")
         onMessageSent ! msg
         cursorCallback.foreach(_.onMessageSent(msg))
       }
@@ -180,7 +187,7 @@ class CursorController(implicit inj: Injector, ctx: Context, evc: EventContext) 
 
   def onApproveEditMessage(): Unit =
     for {
-      cId <- conversationController.selectedConvId
+      cId <- conversationController.currentConvId.head
       cs <- zms.head.map(_.convsUi)
       m <- editingMsg.head if m.isDefined
       msg = m.get
@@ -236,7 +243,7 @@ class CursorController(implicit inj: Injector, ctx: Context, evc: EventContext) 
       networkStore.doIfHasInternetOrNotifyUser(new DefaultNetworkAction() {
         override def execute(networkMode: NetworkMode): Unit = for {
           z <- zms.head
-          cId <- conversationController.selectedConvId
+          cId <- conversationController.currentConvId.head
           _ <- z.convsUi.knock(cId)
         } {
           soundController.playPingFromMe()
@@ -258,6 +265,7 @@ class CursorController(implicit inj: Injector, ctx: Context, evc: EventContext) 
     case Gif =>
       enteredText.head foreach { giphyController.handleInput }
     case Send =>
+      verbose(s"CC Send clicked")
       enteredText.head foreach { submit }
     case _ =>
       // ignore
@@ -281,7 +289,7 @@ object CursorController {
   def keyboardPermissions(tpe: ExtendedCursorContainer.Type) = KeyboardPermissions.getOrElse(tpe, Seq.empty)
 }
 
-// temporary for compatibility with OldConversationFragment
+// temporary for compatibility with ConversationFragment
 trait CursorCallback {
   def openExtendedCursor(tpe: ExtendedCursorContainer.Type): Unit
   def hideExtendedCursor(): Unit

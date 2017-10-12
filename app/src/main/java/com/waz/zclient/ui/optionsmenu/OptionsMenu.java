@@ -339,7 +339,7 @@ public class OptionsMenu extends FrameLayout implements View.OnClickListener {
     public void setConversationDetails(ConversationData conv) {
         if (conv.convType() != IConversation.Type.GROUP &&
             conv.convType() != IConversation.Type.UNKNOWN) {
-            userDetailsView.setUserId(ConversationController.getOtherParticipantForOneToOneConv(conv.id()));
+            userDetailsView.setUserId(ConversationController.getOtherParticipantForOneToOneConv(conv));
         }
     }
 

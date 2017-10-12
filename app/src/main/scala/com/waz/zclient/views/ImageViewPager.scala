@@ -134,7 +134,7 @@ class ImageSwipeAdapter(context: Context)(implicit injector: Injector, ev: Event
   var recyclerCursor: Option[RecyclerCursor] = None
   val cursor = for {
     zs <- zms
-    convId <- inject[ConversationController].selectedConvId
+    convId <- inject[ConversationController].currentConvId
   } yield new RecyclerCursor(convId, zs, notifier, Some(MessageFilter(Some(Images.typeFilter))))
 
   implicit val executionContext = Threading.Ui

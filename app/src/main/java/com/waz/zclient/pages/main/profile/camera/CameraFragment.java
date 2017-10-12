@@ -42,7 +42,6 @@ import com.waz.zclient.camera.FlashMode;
 import com.waz.zclient.camera.views.CameraPreviewTextureView;
 import com.waz.zclient.controllers.accentcolor.AccentColorObserver;
 import com.waz.zclient.controllers.camera.CameraActionObserver;
-import com.waz.zclient.controllers.drawing.DrawingController;
 import com.waz.zclient.controllers.drawing.IDrawingController;
 import com.waz.zclient.controllers.orientation.OrientationControllerObserver;
 import com.waz.zclient.conversation.ConversationController;
@@ -410,7 +409,7 @@ public class CameraFragment extends BaseFragment<CameraFragment.Container> imple
         imagePreviewLayout.setAccentColor(getControllerFactory().getAccentColorController().getAccentColor().getColor());
 
         if (cameraContext == CameraContext.MESSAGE) {
-            inject(ConversationController.class).withSelectedConv(new Callback<ConversationData>() {
+            inject(ConversationController.class).withCurrentConv(new Callback<ConversationData>() {
                 @Override
                 public void callback(ConversationData conversationData) {
                     imagePreviewLayout.setTitle(conversationData.displayName());

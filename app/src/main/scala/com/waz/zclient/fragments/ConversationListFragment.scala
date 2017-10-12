@@ -49,6 +49,8 @@ import com.waz.zclient.utils.ContextUtils._
 import com.waz.zclient.utils.{RichView, ViewUtils}
 import com.waz.zclient.views.conversationlist.{ArchiveTopToolbar, ConversationListTopToolbar, NormalTopToolbar}
 import com.waz.zclient.{BaseActivity, FragmentHelper, OnBackPressedListener, R}
+import com.waz.ZLog._
+import com.waz.ZLog.ImplicitTag._
 
 abstract class ConversationListFragment extends BaseFragment[ConversationListFragment.Container] with FragmentHelper {
 
@@ -94,6 +96,7 @@ abstract class ConversationListFragment extends BaseFragment[ConversationListFra
   def init(view: View, adapter: ConversationListAdapter): Unit
 
   private def handleItemClick(conversationData: ConversationData): Unit = {
+    verbose(s"CC handleItemClick(${conversationData.id}")
     getControllerFactory.getLoadTimeLoggerController.clickConversationInList()
 
     val conversationChangeRequester =

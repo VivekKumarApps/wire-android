@@ -39,7 +39,6 @@ import com.waz.api.Message;
 import com.waz.api.OtrClient;
 import com.waz.api.SyncState;
 import com.waz.api.User;
-import com.waz.api.impl.Conversation;
 import com.waz.model.ConvId;
 import com.waz.model.ConversationData;
 import com.waz.model.UserData;
@@ -105,6 +104,7 @@ import com.waz.zclient.utils.LayoutSpec;
 import com.waz.zclient.utils.ViewUtils;
 import com.waz.zclient.views.LoadingIndicatorView;
 import com.waz.zclient.views.menus.ConfirmationMenu;
+import timber.log.Timber;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -810,31 +810,30 @@ public class ConversationListManagerFragment extends BaseFragment<ConversationLi
 
     @Override
     public void onOptionsItemClicked(final ConvId convId, User user, OptionsMenuItem item) {
-        final ConversationController conversationController = inject(ConversationController.class);
         switch (item) {
             case ARCHIVE:
-                conversationController.withSelectedConv(new Callback<ConversationData>() {
+                inject(ConversationController.class).withCurrentConv(new Callback<ConversationData>() {
                     @Override
-                    public void callback(ConversationData conversationData) {
-                        conversationController.archive(convId, true);
-                        inject(GlobalTrackingController.class).tagEvent(new ArchivedConversationEvent(conversationData.convType().name()));
+                    public void callback(ConversationData conv) {
+                        inject(ConversationController.class).archive(convId, true);
+                        inject(GlobalTrackingController.class).tagEvent(new ArchivedConversationEvent(conv.convType().name()));
                     }
                 });
                 break;
             case UNARCHIVE:
-                conversationController.withSelectedConv(new Callback<ConversationData>() {
+                inject(ConversationController.class).withCurrentConv(new Callback<ConversationData>() {
                     @Override
-                    public void callback(ConversationData conversationData) {
-                        conversationController.archive(convId, false);
-                        inject(GlobalTrackingController.class).tagEvent(new UnarchivedConversationEvent(conversationData.convType().name()));
+                    public void callback(ConversationData conv) {
+                        inject(ConversationController.class).archive(convId, false);
+                        inject(GlobalTrackingController.class).tagEvent(new UnarchivedConversationEvent(conv.convType().name()));
                     }
                 });
                 break;
             case SILENCE:
-                conversationController.setMuted(convId, true);
+                inject(ConversationController.class).setMuted(convId, true);
                 break;
             case UNSILENCE:
-                conversationController.setMuted(convId, false);
+                inject(ConversationController.class).setMuted(convId, false);
                 break;
             case LEAVE:
                 leaveConversation(convId);
@@ -965,6 +964,7 @@ public class ConversationListManagerFragment extends BaseFragment<ConversationLi
     //////////////////////////////////////////////////////////////////////////////////////////
 
     public void leaveConversation(final ConvId convId) {
+        Timber.d("CC leaveConversation: " + convId);
         closeMenu();
         ConfirmationCallback callback = new TwoButtonConfirmationCallback() {
             @Override
@@ -983,6 +983,8 @@ public class ConversationListManagerFragment extends BaseFragment<ConversationLi
                         inject(GlobalTrackingController.class).tagEvent(new LeaveGroupConversationEvent(true, members.size()));
                     }
                 });
+
+                Timber.d("CC leave with checkbox: " + checkboxIsSelected);
 
                 conversationController.leave(convId);
             }
@@ -1045,7 +1047,7 @@ public class ConversationListManagerFragment extends BaseFragment<ConversationLi
 
         final ConversationController conversationController = inject(ConversationController.class);
 
-        conversationController.withSelectedConv(new Callback<ConversationData>() {
+        conversationController.withCurrentConv(new Callback<ConversationData>() {
             @Override
             public void callback(final ConversationData currentConv) {
 
@@ -1115,11 +1117,11 @@ public class ConversationListManagerFragment extends BaseFragment<ConversationLi
                 }
 
                 getStoreFactory().connectStore().blockUser(user);
-                boolean blockingCurrentConversation = user.getConversation().getId().equals(inject(ConversationController.class).getSelectedConvId().str());
+                boolean blockingCurrentConversation = user.getConversation().getId().equals(inject(ConversationController.class).getCurrentConvId().str());
                 if (blockingCurrentConversation) {
                     inject(ConversationController.class).setCurrentConversationToNext(ConversationChangeRequester.BLOCK_USER);
                 }
-                ((BaseActivity) getActivity()).injectJava(GlobalTrackingController.class).tagEvent(new BlockingEvent(BlockingEvent.ConformationResponse.BLOCK));
+                inject(GlobalTrackingController.class).tagEvent(new BlockingEvent(BlockingEvent.ConformationResponse.BLOCK));
             }
 
             @Override
@@ -1128,7 +1130,7 @@ public class ConversationListManagerFragment extends BaseFragment<ConversationLi
                     getControllerFactory().isTornDown()) {
                     return;
                 }
-                ((BaseActivity) getActivity()).injectJava(GlobalTrackingController.class).tagEvent(new BlockingEvent(BlockingEvent.ConformationResponse.CANCEL));
+                inject(GlobalTrackingController.class).tagEvent(new BlockingEvent(BlockingEvent.ConformationResponse.CANCEL));
             }
 
             @Override

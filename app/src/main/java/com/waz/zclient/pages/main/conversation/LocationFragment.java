@@ -34,7 +34,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.provider.Settings;
-import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.widget.Toolbar;
@@ -59,12 +58,8 @@ import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
-import com.waz.api.ConversationsList;
-import com.waz.api.IConversation;
 import com.waz.api.MessageContent;
-import com.waz.api.SyncState;
 import com.waz.model.ConversationData;
-import com.waz.zclient.BaseActivity;
 import com.waz.zclient.BuildConfig;
 import com.waz.zclient.OnBackPressedListener;
 import com.waz.zclient.R;
@@ -72,8 +67,6 @@ import com.waz.zclient.controllers.accentcolor.AccentColorObserver;
 import com.waz.zclient.controllers.permission.RequestPermissionsObserver;
 import com.waz.zclient.controllers.userpreferences.IUserPreferencesController;
 import com.waz.zclient.conversation.ConversationController;
-import com.waz.zclient.core.stores.conversation.ConversationChangeRequester;
-import com.waz.zclient.core.stores.conversation.ConversationStoreObserver;
 import com.waz.zclient.pages.BaseFragment;
 import com.waz.zclient.tracking.GlobalTrackingController;
 import com.waz.zclient.ui.text.GlyphTextView;
@@ -292,8 +285,8 @@ public class LocationFragment extends BaseFragment<LocationFragment.Container> i
         ctrl.onConvChanged(new Callback<ConversationController.ConversationChange>() {
             @Override
             public void callback(ConversationController.ConversationChange change) {
-                if (change.toConversation() != null) {
-                    ctrl.withConvLoaded(change.toConversation(), new Callback<ConversationData>() {
+                if (change.toConvId() != null) {
+                    ctrl.withConvLoaded(change.toConvId(), new Callback<ConversationData>() {
                         @Override
                         public void callback(ConversationData conversationData) {
                             toolbarTitle.setText(conversationData.displayName());
@@ -309,10 +302,10 @@ public class LocationFragment extends BaseFragment<LocationFragment.Container> i
         super.onResume();
         mapView.onResume();
 
-        inject(ConversationController.class).withSelectedConv(new Callback<ConversationData>() {
+        inject(ConversationController.class).withCurrentConvName(new Callback<String>() {
             @Override
-            public void callback(ConversationData conversationData) {
-                toolbarTitle.setText(conversationData.displayName());
+            public void callback(String convName) {
+                toolbarTitle.setText(convName);
             }
         });
 
@@ -523,7 +516,7 @@ public class LocationFragment extends BaseFragment<LocationFragment.Container> i
 
                 getControllerFactory().getLocationController().hideShareLocation(location);
 
-                inject(ConversationController.class).withSelectedConv(new Callback<ConversationData>() {
+                inject(ConversationController.class).withCurrentConv(new Callback<ConversationData>() {
                     @Override
                     public void callback(ConversationData conversationData) {
                         TrackingUtils.onSentLocationMessage(inject(GlobalTrackingController.class), conversationData);

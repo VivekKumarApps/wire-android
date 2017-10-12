@@ -199,7 +199,6 @@ public class PendingConnectRequestManagerFragment extends BaseFragment<PendingCo
 
     @Override
     public void onOptionsItemClicked(final ConvId convId, User user, OptionsMenuItem item) {
-        final ConversationController ctrl = inject(ConversationController.class);
         switch (item) {
             case BLOCK:
                 showBlockUserConfirmation(user);
@@ -208,28 +207,28 @@ public class PendingConnectRequestManagerFragment extends BaseFragment<PendingCo
                 user.unblock();
                 break;
             case ARCHIVE:
-                ctrl.withConvLoaded(convId, new Callback<ConversationData>() {
+                inject(ConversationController.class).withConvLoaded(convId, new Callback<ConversationData>() {
                     @Override
                     public void callback(ConversationData conv) {
-                        ctrl.archive(convId, true);
+                        inject(ConversationController.class).archive(convId, true);
                         inject(GlobalTrackingController.class).tagEvent(new ArchivedConversationEvent(conv.convType().name()));
                     }
                 });
                 break;
             case UNARCHIVE:
-                ctrl.withConvLoaded(convId, new Callback<ConversationData>() {
+                inject(ConversationController.class).withConvLoaded(convId, new Callback<ConversationData>() {
                     @Override
                     public void callback(ConversationData conv) {
-                        ctrl.archive(convId, false);
+                        inject(ConversationController.class).archive(convId, false);
                         inject(GlobalTrackingController.class).tagEvent(new UnarchivedConversationEvent(conv.convType().name()));
                     }
                 });
                 break;
             case SILENCE:
-                ctrl.setMuted(convId, true);
+                inject(ConversationController.class).setMuted(convId, true);
                 break;
             case UNSILENCE:
-                ctrl.setMuted(convId, false);
+                inject(ConversationController.class).setMuted(convId, false);
                 break;
         }
 

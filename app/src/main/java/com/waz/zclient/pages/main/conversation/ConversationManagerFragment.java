@@ -19,24 +19,19 @@ package com.waz.zclient.pages.main.conversation;
 
 import android.content.Intent;
 import android.os.Bundle;
-import android.support.annotation.NonNull;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentManager;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 
-import com.waz.api.ConversationsList;
 import com.waz.api.IConversation;
 import com.waz.api.ImageAsset;
 import com.waz.api.Message;
 import com.waz.api.MessageContent;
 import com.waz.api.OtrClient;
-import com.waz.api.SyncState;
 import com.waz.api.User;
-import com.waz.api.impl.Conversation;
 import com.waz.model.*;
-import com.waz.zclient.BaseActivity;
 import com.waz.zclient.OnBackPressedListener;
 import com.waz.zclient.R;
 import com.waz.zclient.controllers.collections.CollectionsObserver;
@@ -54,7 +49,6 @@ import com.waz.zclient.core.api.scala.ModelObserver;
 import com.waz.zclient.core.controllers.tracking.events.media.SentPictureEvent;
 import com.waz.zclient.core.stores.connect.IConnectStore;
 import com.waz.zclient.core.stores.conversation.ConversationChangeRequester;
-import com.waz.zclient.core.stores.conversation.ConversationStoreObserver;
 import com.waz.zclient.fragments.PickUserFragment;
 import com.waz.zclient.pages.BaseFragment;
 import com.waz.zclient.pages.main.conversation.controller.ConversationScreenControllerObserver;
@@ -105,7 +99,7 @@ public class ConversationManagerFragment extends BaseFragment<ConversationManage
         @Override
         public void updated(IConversation model) {
             groupConversation = model.getType() == IConversation.Type.GROUP;
-            otherUser = groupConversation ? null : model.getOtherParticipant();
+            otherUser = groupConversation ? null :  model.getOtherParticipant();
         }
     };
 
@@ -138,15 +132,13 @@ public class ConversationManagerFragment extends BaseFragment<ConversationManage
         getControllerFactory().getPickUserController().addPickUserScreenControllerObserver(this);
 
         getControllerFactory().getLocationController().addObserver(this);
-        getCollectionController().addObserver(this);
+        inject(CollectionController.class).addObserver(this);
 
         final ConversationController ctrl = inject(ConversationController.class);
 
-        if (ctrl.getSelectedConvId() != null) {
-            IConversation currentConversation = getStoreFactory().conversationStore().getConversation(ctrl.getSelectedConvId().str());
-            if (currentConversation != null) {
-                getStoreFactory().participantsStore().setCurrentConversation(currentConversation);
-            }
+        IConversation currentConversation = ctrl.iCurrentConv();
+        if (currentConversation != null) {
+            getStoreFactory().participantsStore().setCurrentConversation(currentConversation);
         }
 
         ctrl.onConvChanged(new Callback<ConversationController.ConversationChange>() {
@@ -167,13 +159,13 @@ public class ConversationManagerFragment extends BaseFragment<ConversationManage
                 closeLikesList();
             }
 
-            if (change.toConversation() != null) {
-                IConversation iConv = getStoreFactory().conversationStore().getConversation(change.toConversation().str());
+            if (change.toConvId() != null) {
+                IConversation iConv = ctrl.iConv(change.toConvId());
                 getStoreFactory().participantsStore().setCurrentConversation(iConv);
                 conversationModelObserver.setAndUpdate(iConv);
             }
 
-            getCollectionController().closeCollection();
+                inject(CollectionController.class).closeCollection();
             }
         });
     }
@@ -185,12 +177,8 @@ public class ConversationManagerFragment extends BaseFragment<ConversationManage
         getControllerFactory().getCameraController().removeCameraActionObserver(this);
         getControllerFactory().getDrawingController().removeDrawingObserver(this);
         getControllerFactory().getConversationScreenController().removeConversationControllerObservers(this);
-        getCollectionController().removeObserver(this);
+        inject(CollectionController.class).removeObserver(this);
         super.onStop();
-    }
-
-    private CollectionController getCollectionController() {
-        return ((BaseActivity) getActivity()).injectJava(CollectionController.class);
     }
 
     @Override
@@ -457,7 +445,7 @@ public class ConversationManagerFragment extends BaseFragment<ConversationManage
 
         // Photo sent via contacts quick menu
 
-        conversationController.withSelectedConv(new Callback<ConversationData>() {
+        conversationController.withCurrentConv(new Callback<ConversationData>() {
             @Override
             public void callback(ConversationData conversationData) {
                 TrackingUtils.onSentPhotoMessage(inject(GlobalTrackingController.class),
@@ -527,7 +515,7 @@ public class ConversationManagerFragment extends BaseFragment<ConversationManage
         for(User user: users) userIds.add(new UserId(user.getId()));
 
         final ConversationController conversationController = inject(ConversationController.class);
-        conversationController.withSelectedConv(new Callback<ConversationData>() {
+        conversationController.withCurrentConv(new Callback<ConversationData>() {
             @Override
             public void callback(ConversationData conversationData) {
                 if (conversationData.convType() == IConversation.Type.ONE_TO_ONE) {
@@ -594,7 +582,7 @@ public class ConversationManagerFragment extends BaseFragment<ConversationManage
                                  R.anim.open_new_conversation__thread_list_in,
                                  R.anim.slide_out_to_bottom_pick_user)
             .replace(R.id.fl__conversation_manager__message_list_container,
-                     PickUserFragment.newInstance(true, groupConversation, inject(ConversationController.class).getSelectedConvId().str()),
+                     PickUserFragment.newInstance(true, groupConversation, inject(ConversationController.class).getCurrentConvId().str()),
                      PickUserFragment.TAG())
             .addToBackStack(PickUserFragment.TAG())
             .commit();

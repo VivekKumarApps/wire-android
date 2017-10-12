@@ -226,7 +226,7 @@ public class PendingConnectRequestFragment extends BaseFragment<PendingConnectRe
                 inject(ConversationController.class).withConvLoaded(conversationId, new Callback<ConversationData>() {
                     @Override
                     public void callback(ConversationData conversationData) {
-                        onConversationLoaded(conversationData.id());
+                        onConversationLoaded(conversationData);
                     }
                 });
                 break;
@@ -357,20 +357,20 @@ public class PendingConnectRequestFragment extends BaseFragment<PendingConnectRe
         footerMenu.setLeftActionLabelText(getString(R.string.send_connect_request__connect_button__text));
     }
 
-    private void onConversationLoaded(ConvId convId) {
+    private void onConversationLoaded(ConversationData conv) {
 
         switch (loadMode) {
             case LOAD_BY_CONVERSATION_ID:
                 if (this.conversation != null) {
                     this.conversation.removeUpdateListener(this);
                 }
-                this.conversation = getStoreFactory().conversationStore().getConversation(convId.str());
+                this.conversation = inject(ConversationController.class).iConv(conv.id());
                 if (conversation != null) {
                     conversation.addUpdateListener(this);
                 }
 
-                getStoreFactory().connectStore().loadUser(conversation.getOtherParticipant().getId(),
-                                                             userRequester);
+                getStoreFactory().connectStore().loadUser(ConversationController.getOtherParticipantForOneToOneConv(conv).str(), userRequester);
+
                 break;
         }
     }
@@ -393,7 +393,7 @@ public class PendingConnectRequestFragment extends BaseFragment<PendingConnectRe
                 inject(ConversationController.class).withConvLoaded(new ConvId(user.getConversation().getId()), new Callback<ConversationData>() {
                     @Override
                     public void callback(ConversationData conversationData) {
-                        onConversationLoaded(conversationData.id());
+                        onConversationLoaded(conversationData);
                     }
                 });
                 break;

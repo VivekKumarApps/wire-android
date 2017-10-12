@@ -119,7 +119,7 @@ object WireApplication {
     bind [ConversationController]          to new ConversationController()
 
     // current conversation data
-    bind [Signal[ConversationData]] to inject[ConversationController].selectedConv.collect { case Some(conv) => conv }
+    bind [Signal[ConversationData]] to inject[ConversationController].currentConv.collect { case Some(conv) => conv }
 
     // accent color
     bind [Signal[AccentColor]] to inject[AccentColorController].accentColor

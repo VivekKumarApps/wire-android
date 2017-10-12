@@ -36,19 +36,23 @@ import com.waz.zclient.{Injectable, Injector}
 class MessagesListAdapter(listDim: Signal[Dim2])(implicit inj: Injector, ec: EventContext)
   extends MessagesListView.Adapter() with Injectable { adapter =>
 
-  verbose("MessagesListAdapter created")
+  verbose("CC MessagesListAdapter created")
 
-  val zms = inject[Signal[ZMessaging]]
-  val listController = inject[MessagesController]
+  lazy val zms = inject[Signal[ZMessaging]]
+  lazy val listController = inject[MessagesController]
+  lazy val conversationController = inject[ConversationController]
   val ephemeralCount = Signal(Set.empty[MessageId])
 
   var unreadIndex = UnreadIndex(0)
 
   val cursor = for {
     zs <- zms
-    Some(c) <- inject[ConversationController].selectedConv
-  } yield
-    (new RecyclerCursor(c.id, zs, notifier), c.convType)
+    cId <- conversationController.currentConvId
+    Some(convType) <- conversationController.currentConvType
+  } yield {
+    verbose(s"CC creating a new recycler cursor for ${cId}")
+    (new RecyclerCursor(cId, zs, notifier), convType)
+  }
 
   private var messages = Option.empty[RecyclerCursor]
   private var convId = ConvId()

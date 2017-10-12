@@ -23,9 +23,11 @@ import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.view.View;
 import android.view.ViewGroup;
+import com.waz.utils.WhereAmI;
 import com.waz.zclient.R;
 import com.waz.zclient.utils.ViewUtils;
 import com.waz.zclient.views.ParticipantDetailsTab;
+import timber.log.Timber;
 
 public class TabbedParticipantPagerAdapter extends PagerAdapter implements RecyclerView.RecyclerListener {
 

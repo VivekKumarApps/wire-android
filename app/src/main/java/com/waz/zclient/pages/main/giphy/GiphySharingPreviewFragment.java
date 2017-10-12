@@ -206,7 +206,7 @@ public class GiphySharingPreviewFragment extends BaseFragment<GiphySharingPrevie
         getControllerFactory().getAccentColorController().addAccentColorObserver(this);
         getStoreFactory().networkStore().addNetworkStoreObserver(this);
 
-        inject(ConversationController.class).withSelectedConv(new Callback<ConversationData>() {
+        inject(ConversationController.class).withCurrentConv(new Callback<ConversationData>() {
             @Override
             public void callback(ConversationData conversationData) {
                 giphyTitle.setText(conversationData.displayName());
@@ -404,7 +404,7 @@ public class GiphySharingPreviewFragment extends BaseFragment<GiphySharingPrevie
 
     private void sendGif() {
         ConversationController conversationController = inject(ConversationController.class);
-        conversationController.withSelectedConv(new Callback<ConversationData>() {
+        conversationController.withCurrentConv(new Callback<ConversationData>() {
             @Override
             public void callback(ConversationData conversationData) {
                 TrackingUtils.onSentGifMessage(inject(GlobalTrackingController.class), conversationData);

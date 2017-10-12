@@ -121,7 +121,7 @@ object SingleImageCollectionFragment {
     var recyclerCursor: Option[RecyclerCursor] = None
     val cursor = for {
       zs <- zms
-      convId <- inject[ConversationController].selectedConvId
+      convId <- inject[ConversationController].currentConvId
     } yield new RecyclerCursor(convId, zs, notifier, Some(MessageFilter(Some(Images.typeFilter))))
 
     cursor.on(Threading.Ui) { c =>

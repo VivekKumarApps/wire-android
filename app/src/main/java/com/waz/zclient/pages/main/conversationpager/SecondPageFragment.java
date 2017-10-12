@@ -20,7 +20,6 @@ package com.waz.zclient.pages.main.conversationpager;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
-import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentTransaction;
@@ -28,9 +27,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 
-import com.waz.api.ConversationsList;
 import com.waz.api.IConversation;
-import com.waz.api.SyncState;
 import com.waz.api.UpdateListener;
 import com.waz.api.User;
 import com.waz.model.ConvId;
@@ -44,7 +41,6 @@ import com.waz.zclient.controllers.navigation.PagerControllerObserver;
 import com.waz.zclient.conversation.ConversationController;
 import com.waz.zclient.core.stores.connect.IConnectStore;
 import com.waz.zclient.core.stores.conversation.ConversationChangeRequester;
-import com.waz.zclient.core.stores.conversation.ConversationStoreObserver;
 import com.waz.zclient.pages.BaseFragment;
 import com.waz.zclient.pages.main.connect.ConnectRequestLoadMode;
 import com.waz.zclient.pages.main.connect.PendingConnectRequestManagerFragment;
@@ -64,12 +60,8 @@ public class SecondPageFragment extends BaseFragment<SecondPageFragment.Containe
     private static final String SECOND_PAGE_POSITION = "SECOND_PAGE_POSITION";
     public static final String ARGUMENT_CONVERSATION_ID = "ARGUMENT_CONVERSATION_ID";
 
-
     private Page currentPage;
-    private ConvId convId;
     private IConversation.Type selectedConversationType;
-
-    private ConversationController conversationController;
 
     public static SecondPageFragment newInstance() {
         return new SecondPageFragment();
@@ -137,29 +129,25 @@ public class SecondPageFragment extends BaseFragment<SecondPageFragment.Containe
 
     @Override
     public void onViewCreated(View view, @Nullable Bundle savedInstanceState) {
-        conversationController = inject(ConversationController.class);
-        conversationController.onConvChanged(new Callback<ConversationController.ConversationChange>() {
+        inject(ConversationController.class).onConvChanged(new Callback<ConversationController.ConversationChange>() {
             @Override
             public void callback(final ConversationController.ConversationChange change) {
-                convId = null;
-                if (change.toConversation() == null || change.noChange()) {
+                if (change.toConvId() == null || change.noChange()) {
                     return;
                 }
 
-                convId = change.toConversation();
-
-                conversationController.withConvLoaded(convId, new Callback<ConversationData>() {
+                inject(ConversationController.class).withCurrentConvType(new Callback<IConversation.Type>() {
                     @Override
-                    public void callback(final ConversationData data) {
-                        selectedConversationType = data.convType();
+                    public void callback(final IConversation.Type convType) {
+                        selectedConversationType = convType;
 
                         Timber.i("Conversation: %s type: %s requester: %s",
-                            data.id(),
-                            data.convType(),
+                            change.toConvId(),
+                            convType,
                             change.requester());
                         // either starting from beginning or switching fragment
-                        final boolean switchingToPendingConnectRequest = (data.convType() == IConversation.Type.WAIT_FOR_CONNECTION);
-                        final boolean switchingToConnectRequestInbox = data.convType() == IConversation.Type.INCOMING_CONNECTION;
+                        final boolean switchingToPendingConnectRequest = (convType == IConversation.Type.WAIT_FOR_CONNECTION);
+                        final boolean switchingToConnectRequestInbox = convType == IConversation.Type.INCOMING_CONNECTION;
                         // This must be posted because onCurrentConversationHasChanged()
                         // might still be running and iterating over the observers -
                         // while the posted call triggers things to register/unregister
@@ -169,11 +157,11 @@ public class SecondPageFragment extends BaseFragment<SecondPageFragment.Containe
                             public void run() {
                                 if (switchingToConnectRequestInbox) {
                                     Bundle arguments = new Bundle();
-                                    arguments.putString(ARGUMENT_CONVERSATION_ID, data.id().str());
+                                    arguments.putString(ARGUMENT_CONVERSATION_ID, change.toConvId().str());
                                     openPage(Page.CONNECT_REQUEST_INBOX, arguments);
                                 } else if (switchingToPendingConnectRequest) {
                                     Bundle arguments = new Bundle();
-                                    arguments.putString(ARGUMENT_CONVERSATION_ID, data.id().str());
+                                    arguments.putString(ARGUMENT_CONVERSATION_ID, change.toConvId().str());
                                     openPage(Page.CONNECT_REQUEST_PENDING, arguments);
                                 } else {
                                     openPage(Page.MESSAGE_STREAM, new Bundle());
@@ -317,15 +305,15 @@ public class SecondPageFragment extends BaseFragment<SecondPageFragment.Containe
 
     @Override
     public void updated() {
-        conversationController.withConvLoaded(convId, new Callback<ConversationData>() {
+        inject(ConversationController.class).withCurrentConvType(new Callback<IConversation.Type>() {
             @Override
-            public void callback(ConversationData conv) {
+            public void callback(IConversation.Type convType) {
                 if ((selectedConversationType == IConversation.Type.INCOMING_CONNECTION ||
                     selectedConversationType == IConversation.Type.WAIT_FOR_CONNECTION) &&
-                    conv.convType() == IConversation.Type.ONE_TO_ONE) {
+                    convType == IConversation.Type.ONE_TO_ONE) {
                     openPage(Page.MESSAGE_STREAM, new Bundle());
                 }
-                selectedConversationType = conv.convType();
+                selectedConversationType = convType;
             }
         });
     }

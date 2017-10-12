@@ -49,7 +49,7 @@ class CollectionAdapter(viewDim: Signal[Dim2])(implicit context: Context, inject
   private implicit val tag: LogTag = logTagFor[CollectionAdapter]
 
   private val zms = inject[Signal[ZMessaging]]
-  private val conv = inject[ConversationController].selectedConv
+  private val conv = inject[ConversationController].currentConv
   private val collectionController = inject[CollectionController]
 
   val contentMode = Signal[ContentType](AllContent)

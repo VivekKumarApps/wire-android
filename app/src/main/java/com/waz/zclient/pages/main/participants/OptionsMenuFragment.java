@@ -49,6 +49,7 @@ import com.waz.zclient.ui.theme.OptionsTheme;
 import com.waz.zclient.utils.Callback;
 import com.waz.zclient.utils.TrackingUtils;
 import com.waz.zclient.utils.ViewUtils;
+import timber.log.Timber;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -128,6 +129,7 @@ public class OptionsMenuFragment extends BaseFragment<OptionsMenuFragment.Contai
         });
 
         String conversationId = getArguments().getString(ARGUMENT_CONVERSATION_ID);
+        Timber.d("CC onStart " + conversationId);
 
         if (!TextUtils.isEmpty(conversationId)) {
             connectConversation(new ConvId(conversationId));
@@ -172,10 +174,12 @@ public class OptionsMenuFragment extends BaseFragment<OptionsMenuFragment.Contai
     }
 
 
-    private void onMenuConversationHasChanged(ConversationData conv) {
+    public void onMenuConversationHasChanged(ConversationData conv) {
+        Timber.d("CC onMenuConversationHasChanged: " + conv.id().str());
         List<OptionsMenuItem> items = new ArrayList<>();
 
         if (conv.convType() == IConversation.Type.GROUP) {
+            Timber.d("CC conv type is group");
             if (conv.isActive()) {
                 // silence/unsilence
                 if (conv.muted()) {
@@ -207,11 +211,13 @@ public class OptionsMenuFragment extends BaseFragment<OptionsMenuFragment.Contai
             }
             optionsMenu.setMenuItems(items, optionsTheme);
         } else if (conv.convType() == IConversation.Type.ONE_TO_ONE) {
+            Timber.d("CC conv type is one to one");
             items.add(OptionsMenuItem.CALL);
             items.add(OptionsMenuItem.PICTURE);
-            connectUser(ctrl.getOtherParticipant(conv.id()));
+            connectUser(ConversationController.getOtherParticipantForOneToOneConv(conv));
         } else if (conv.convType() == IConversation.Type.WAIT_FOR_CONNECTION) {
-            connectUser(ctrl.getOtherParticipant(conv.id()));
+            Timber.d("CC conv type is wait for connection");
+            connectUser(ConversationController.getOtherParticipantForOneToOneConv(conv));
         }
     }
 

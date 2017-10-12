@@ -383,7 +383,7 @@ public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogF
                 transaction.replace(R.id.fl__participant_dialog__main__container,
                                     PickUserFragment.newInstance(true,
                                                                  getArguments().getBoolean(ARG__GROUP_CONVERSATION),
-                                                                 inject(ConversationController.class).getSelectedConvId().str()),
+                                                                 inject(ConversationController.class).getCurrentConvId().str()),
                                     PickUserFragment.TAG());
 
             } else if (getControllerFactory().getConversationScreenController().getPopoverLaunchMode() == DialogLaunchMode.PARTICIPANT_BUTTON ||
@@ -729,7 +729,7 @@ public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogF
                 ((ConversationScreenControllerObserver) fragment).onHideUser();
             }
 
-            updateGroupDialogBackground(inject(ConversationController.class).getSelectedConvId());
+            updateGroupDialogBackground(inject(ConversationController.class).getCurrentConvId());
         } else {
             setVisible(false);
         }
@@ -1051,7 +1051,7 @@ public class ParticipantsDialogFragment extends BaseFragment<ParticipantsDialogF
         final List<UserId> userIds = new ArrayList<>(users.size());
         for (User user: users) userIds.add(new UserId(user.getId()));
 
-        ctrl.withSelectedConv(new Callback<ConversationData>() {
+        ctrl.withCurrentConv(new Callback<ConversationData>() {
             @Override
             public void callback(ConversationData conv) {
                 if (conv.convType() == IConversation.Type.ONE_TO_ONE) {

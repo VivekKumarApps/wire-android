@@ -237,7 +237,7 @@ public class ParticipantFragment extends BaseFragment<ParticipantFragment.Contai
                 .commit();
 
             if (getStoreFactory() != null && !getStoreFactory().isTornDown())
-                convController.withSelectedConv(new Callback<ConversationData>() {
+                convController.withCurrentConv(new Callback<ConversationData>() {
                     @Override
                     public void callback(ConversationData conversationData) {
                         if (conversationData.convType() == IConversation.Type.ONE_TO_ONE ||
@@ -276,7 +276,7 @@ public class ParticipantFragment extends BaseFragment<ParticipantFragment.Contai
             final User user = getStoreFactory().singleParticipantStore().getUser();
             getStoreFactory().connectStore().loadUser(user.getId(), userRequester);
         } else {
-            onConversationLoaded(convController.getSelectedConvId());
+            onConversationLoaded(convController.getCurrentConvId());
         }
         if (LayoutSpec.isPhone(getActivity())) {
             // ConversationScreenController is handled in ParticipantDialogFragment for tablets
@@ -288,7 +288,7 @@ public class ParticipantFragment extends BaseFragment<ParticipantFragment.Contai
             @Override
             public void callback(ConversationController.ConversationChange change) {
                 onCurrentConversationHasChanged(change);
-                onConversationLoaded(change.toConversation());
+                onConversationLoaded(change.toConvId());
             }
         });
     }
@@ -323,7 +323,7 @@ public class ParticipantFragment extends BaseFragment<ParticipantFragment.Contai
     }
 
     private void onCurrentConversationHasChanged(ConversationController.ConversationChange change) {
-        if (change.toConversation() == null) {
+        if (change.toConvId() == null) {
             return;
         }
 
@@ -456,7 +456,7 @@ public class ParticipantFragment extends BaseFragment<ParticipantFragment.Contai
 
     public void deleteConversation(final ConvId convId) {
 
-        convController.withSelectedConv(new Callback<ConversationData>() {
+        convController.withCurrentConv(new Callback<ConversationData>() {
             @Override
             public void callback(final ConversationData currentConv) {
                 ConfirmationCallback callback = new TwoButtonConfirmationCallback() {
@@ -541,7 +541,7 @@ public class ParticipantFragment extends BaseFragment<ParticipantFragment.Contai
                     return;
                 }
 
-                convController.withSelectedConv(new Callback<ConversationData>() {
+                convController.withCurrentConv(new Callback<ConversationData>() {
                     @Override
                     public void callback(ConversationData conv) {
                         if (archive) {
@@ -679,7 +679,7 @@ public class ParticipantFragment extends BaseFragment<ParticipantFragment.Contai
                     IConversation.Type.ONE_TO_ONE));
                 getControllerFactory().getConversationScreenController().setMemberOfConversation(conversationData.isActive());
 
-                IConversation iConv = getStoreFactory().conversationStore().getConversation(convId.str());
+                IConversation iConv = convController.iConv(convId);
                 getStoreFactory().participantsStore().setCurrentConversation(iConv);
                 conversationModelObserver.setAndUpdate(iConv);
             }
@@ -1029,7 +1029,7 @@ public class ParticipantFragment extends BaseFragment<ParticipantFragment.Contai
         final List<UserId> userIds = new ArrayList<>(users.size());
         for(User user: users) userIds.add(new UserId(user.getId()));
 
-        convController.withSelectedConv(new Callback<ConversationData>() {
+        convController.withCurrentConv(new Callback<ConversationData>() {
             @Override
             public void callback(ConversationData currentConv) {
                 if (currentConv.convType() == IConversation.Type.ONE_TO_ONE) {
@@ -1103,7 +1103,7 @@ public class ParticipantFragment extends BaseFragment<ParticipantFragment.Contai
             .beginTransaction()
             .setCustomAnimations(pickUserAnimation, R.anim.fade_out)
             .add(R.id.fl__add_to_conversation__pickuser__container,
-                 PickUserFragment.newInstance(true, groupConversation, convController.getSelectedConvId().str()),
+                 PickUserFragment.newInstance(true, groupConversation, convController.getCurrentConvId().str()),
                  PickUserFragment.TAG())
             .addToBackStack(PickUserFragment.TAG())
             .commit();

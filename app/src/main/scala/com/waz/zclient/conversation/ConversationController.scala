@@ -18,7 +18,7 @@
 package com.waz.zclient.conversation
 
 import android.content.Context
-import com.waz.api.{EphemeralExpiration, Verification}
+import com.waz.api.{EphemeralExpiration, IConversation, Verification}
 import com.waz.model.ConversationData.ConversationType
 import com.waz.model._
 import com.waz.service.ZMessaging
@@ -54,29 +54,43 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
   private val storage = zms.map(_.convsStorage)
   private val stats = zms.map(_.convsStats)
 
-  private var currentConvId = Option.empty[ConvId]
+  private var lastConvId = Option.empty[ConvId]
 
-  val selectedConvId = zms.flatMap(_.convsStats.selectedConversationId).collect { case Some(convId) =>
-    verbose(s"selected conv id changed to $convId")
+  val currentConvId = zms.flatMap(_.convsStats.selectedConversationId).collect { case Some(convId) =>
+    verbose(s"CC selected conv id changed to $convId")
     convId
+  }
+
+  val currentConv: Signal[Option[ConversationData]] = currentConvId.flatMap { id => storage.flatMap(_.optSignal(id)) } // updates on every change of the conversation data, not only on switching
+
+  val currentConvType: Signal[Option[ConversationType]] = for { // convType can be changed only by switching to a new conversation
+    id <- currentConvId
+    conv <- Signal.future(loadConv(id))
+  } yield conv.map(_.convType)
+
+  val currentConvName: Signal[String] = currentConv.map { // the name of the current conversation can be edited (without switching)
+    case Some(conv) => conv.displayName
+    case _ => ""
   }
 
   for {
     z <- zms
-    id <- selectedConvId
-  } yield z.conversations.forceNameUpdate(id)
+    convId <- currentConvId
+  } yield {
+    verbose(s"CC forcing name update for $convId")
+    z.conversations.forceNameUpdate(convId)
+  }
 
-  def getSelectedConvId(): ConvId = selectedConvId.currentValue.orNull; // TODO: remove when not used anymore
+  def getCurrentConvId(): ConvId = currentConvId.currentValue.orNull; // TODO: remove when not used anymore
 
   // this should be the only UI entry point to change conv in SE
-  def selectConv(id: Option[ConvId], requester: ConversationChangeRequester): Future[Unit] = id match {
+  def selectConv(convId: Option[ConvId], requester: ConversationChangeRequester): Future[Unit] = convId match {
     case None => Future.successful({})
-    case Some(convId) if currentConvId.contains(convId) => Future.successful({})
-    case Some(convId) =>
-      stats.head.flatMap(_.selectConversation(id)).map { _ =>
-        verbose(s"selectConv $id")
-        convChanged ! ConversationChange(from = currentConvId, to = id, requester = requester)
-        currentConvId = id
+    case Some(_) =>
+      stats.head.flatMap(_.selectConversation(convId)).map { _ =>
+        verbose(s"CC selectConv $convId")
+        convChanged ! ConversationChange(from = lastConvId, to = convId, requester = requester)
+        lastConvId = convId
       }
   }
 
@@ -85,26 +99,35 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
   val convChanged = EventStream[ConversationChange]()
 
   def onConvChanged(callback: Callback[ConversationChange]): Unit = { // TODO: remove when not used anymore
-    convChanged.on(Threading.Ui) { cc => callback.callback(cc) }
+    convChanged.onUi { cc =>
+      verbose(s"CC calling a callback onConversationChange from ${cc.from} to ${cc.to}")
+      callback.callback(cc)
+    }
   }
+
+  val currentConvRequester: Signal[Option[ConversationChangeRequester]] = Signal.wrap(Option.empty[ConversationChangeRequester], convChanged.map(c => Option(c.requester)))
+
+  def onConvRequesterChanged(callback: Callback[ConversationChangeRequester]): Unit =
+    currentConvRequester.onUi { r => callback.callback(r.orNull) }
 
   def changeWithinConv(convId: ConvId): Signal[Option[ConversationData]] = for {
     z <- zms
     conv <- z.convsStorage.optSignal(convId)
-  } yield conv
+  } yield {
+    verbose(s"CC change within conv $convId")
+    conv
+  }
 
+  def loadConv(convId: ConvId): Future[Option[ConversationData]] = {
+    verbose(s"CC load conv $convId")
+    storage.head.flatMap(_.get(convId))
+  }
 
-  def loadConv(id: ConvId): Future[Option[ConversationData]] = storage.head.flatMap(_.get(id))
-
-  def withConvLoaded(id: ConvId, callback: Callback[ConversationData]): Unit =  // TODO: remove when not used anymore
-    loadConv(id).foreach {
+  def withConvLoaded(convId: ConvId, callback: Callback[ConversationData]): Unit =  // TODO: remove when not used anymore
+    loadConv(convId).foreach {
       case Some(data) => callback.callback(data)
       case None =>
     }
-
-  def isGroup(conv: ConversationData): Future[Boolean] =
-    if (conv.team.isEmpty) Future.successful(conv.convType == ConversationType.Group)
-    else zms.map(_.membersStorage).head.flatMap(_.getByConv(conv.id)).map(_.map(_.userId).size > 2)
 
   def createAndOpenConv(users: Array[UserId], requester: ConversationChangeRequester, activity: BaseActivity): Future[Unit] =
     for {
@@ -117,36 +140,38 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
   def getOrCreateConv(userId: UserId): Future[ConversationData] = for {
     z <- zms.head
     conv <- z.convsUi.getOrCreateOneToOneConversation(userId)
-  } yield conv
-
-  val selectedConv: Signal[Option[ConversationData]] = selectedConvId.flatMap { id => storage.flatMap(_.optSignal(id)) }
-
-  def withSelectedConv(callback: Callback[ConversationData]): Unit = { // TODO: remove when not used anymore
-    selectedConv.collect { case Some(c) => c }.head.foreach( callback.callback )
+  } yield {
+    conv
   }
 
-  def withSelectedConv(f: (ConversationData) => Unit): Future[Unit] =
-    selectedConv.collect { case Some(c) => c }.head.map( f )
+  def withCurrentConv(callback: Callback[ConversationData]): Unit =  // TODO: remove when not used anymore
+    currentConv.collect { case Some(c) => c }.head.foreach( callback.callback )
 
-  val selectedConvIsGroup: Signal[Boolean] = selectedConv.flatMap {
-    case Some(conv) => Signal.future(isGroup(conv))
+  def withCurrentConvName(callback: Callback[String]): Unit = currentConvName.head.foreach(callback.callback) // TODO: remove when not used anymore
+  def withCurrentConvType(callback: Callback[IConversation.Type]) = currentConvType.collect { case Some(t) => t }.head.foreach(callback.callback) // TODO: remove when not used anymore
+
+  def withCurrentConv(f: (ConversationData) => Unit): Future[Unit] = currentConv.collect { case Some(c) => c }.head.map(f)
+
+  val currentConvIsGroup: Signal[Boolean] = currentConv.flatMap {
+    case Some(conv) =>
+      if (conv.team.isEmpty) Signal.const(conv.convType == ConversationType.Group)
+      else Signal.future(zms.map(_.membersStorage).head.flatMap(_.getByConv(conv.id)).map(_.map(_.userId).size > 2))
     case None => Signal.const(false)
   }
 
-  val selectedConvIsVerified: Signal[Boolean] = selectedConv.map(_.fold(false)(_.verified == Verification.VERIFIED))
+  def isGroup(conv: ConversationData): Future[Boolean] =
+  if (conv.team.isEmpty) Future.successful(conv.convType == ConversationType.Group)
+      else zms.map(_.membersStorage).head.flatMap(_.getByConv(conv.id)).map(_.map(_.userId).size > 2)
+
+  val currentConvIsVerified: Signal[Boolean] = currentConv.map(_.fold(false)(_.verified == Verification.VERIFIED))
 
   def unreadCountForConv(conversationData: ConversationData): Int =
     if (conversationData.archived || conversationData.muted || conversationData.hidden) 0
     else conversationData.unreadCount.total
 
-  val selectedConversationIsActive: Signal[Boolean] = selectedConv.map {
-    case Some(conv) => conv.isActive
-    case None => false
-  }
-
   def setEphemeralExpiration(expiration: EphemeralExpiration): Future[Unit] = for {
     z <- zms.head
-    id <- selectedConvId.head
+    id <- currentConvId.head
     _ <- z.convsUi.setEphemeral(id, expiration)
   } yield ()
 
@@ -154,37 +179,41 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
     z <- zms.head
     userIds <- z.membersStorage.activeMembers(convId).head
     users <- z.users.getUsers(userIds.toSeq)
-  } yield users
+  } yield {
+    verbose(s"CC loadMembers($convId): ${users.size}")
+    users
+  }
 
   def withMembers(convId: ConvId, callback: Callback[java.util.Collection[UserData]]): Unit = // TODO: remove when not used anymore
-    loadMembers(convId).foreach { users => callback.callback(users.asJavaCollection) }
-  def withCurrentConvMembers(callback: Callback[java.util.Collection[UserData]]): Unit = selectedConvId.head.foreach { id => withMembers(id, callback) }
+    loadMembers(convId).foreach { users =>
+      verbose(s"CC withMembers($convId): ${users.size}")
+      callback.callback(users.asJavaCollection)
+    }
+
+  def withCurrentConvMembers(callback: Callback[java.util.Collection[UserData]]): Unit = currentConvId.head.foreach { id => withMembers(id, callback) }
 
   def loadClients(userId: UserId): Future[Seq[Client]] = zms.head.flatMap(_.otrClientsStorage.getClients(userId)) // TODO: move to SE maybe?
 
-  def sendMessage(uri: URI, errorHandler: ErrorHandler): Future[Unit] = selectedConvId.head.map { convId => sendMessage(convId, uri, errorHandler) }
+  def sendMessage(uri: URI, errorHandler: ErrorHandler): Future[Unit] = currentConvId.head.map { convId => sendMessage(convId, uri, errorHandler) }
   def sendMessage(convId: ConvId, uri: URI, errorHandler: ErrorHandler): Future[Unit] = zms.head.map { _.convsUi.sendMessage(convId, uri, errorHandler) }
-  def sendMessage(audioAsset: AssetForUpload, errorHandler: ErrorHandler): Future[Unit] = selectedConvId.head.map { convId => sendMessage(convId, audioAsset, errorHandler) }
+  def sendMessage(audioAsset: AssetForUpload, errorHandler: ErrorHandler): Future[Unit] = currentConvId.head.map { convId => sendMessage(convId, audioAsset, errorHandler) }
   def sendMessage(convId: ConvId, audioAsset: AssetForUpload, errorHandler: ErrorHandler): Future[Unit] = zms.head.map { _.convsUi.sendMessage(convId, audioAsset, errorHandler) }
-  def sendMessage(text: String): Future[Unit] = selectedConvId.head.map { convId =>
-    verbose(s"sendMessage($text) with selected conv id $convId")
-    sendMessage(convId, text)
-  }
+  def sendMessage(text: String): Future[Unit] = currentConvId.head.map { convId => sendMessage(convId, text) }
   def sendMessage(convId: ConvId, text: String): Future[Unit] = zms.head.map { _.convsUi.sendMessage(convId, text) }
-  def sendMessage(text: String, mentions: Set[UserId]): Future[Unit] = selectedConvId.head.map { convId => sendMessage(convId, text, mentions) }
+  def sendMessage(text: String, mentions: Set[UserId]): Future[Unit] = currentConvId.head.map { convId => sendMessage(convId, text, mentions) }
   def sendMessage(convId: ConvId, text: String, mentions: Set[UserId]): Future[Unit] = zms.head.map { _.convsUi.sendMessage(convId, text, mentions) }
-  def sendMessage(jpegData: Array[Byte]): Future[Unit] = selectedConvId.head.map { convId => sendMessage(convId, jpegData) }
+  def sendMessage(jpegData: Array[Byte]): Future[Unit] = currentConvId.head.map { convId => sendMessage(convId, jpegData) }
   def sendMessage(convId: ConvId, jpegData: Array[Byte]): Future[Unit] = zms.head.map { _.convsUi.sendMessage(convId, jpegData) }
   def sendMessage(imageAsset: com.waz.api.ImageAsset): Future[Unit] = imageAsset match { // TODO: remove when not used anymore
-    case a: com.waz.api.impl.ImageAsset => selectedConvId.head.map { convId => sendMessage(convId, a) }
+    case a: com.waz.api.impl.ImageAsset => currentConvId.head.map { convId => sendMessage(convId, a) }
     case _ => Future.successful({})
   }
-  def sendMessage(imageAsset: ImageAsset): Future[Unit] = selectedConvId.head.map { convId => sendMessage(convId, imageAsset) }
+  def sendMessage(imageAsset: ImageAsset): Future[Unit] = currentConvId.head.map { convId => sendMessage(convId, imageAsset) }
   def sendMessage(convId: ConvId, imageAsset: ImageAsset): Future[Unit] = zms.head.map { _.convsUi.sendMessage(convId, imageAsset) }
-  def sendMessage(location: api.MessageContent.Location): Future[Unit] = selectedConvId.head.map { convId => sendMessage(convId, location) }
+  def sendMessage(location: api.MessageContent.Location): Future[Unit] = currentConvId.head.map { convId => sendMessage(convId, location) }
   def sendMessage(convId: ConvId, location: api.MessageContent.Location): Future[Unit] = zms.head.map { _.convsUi.sendMessage(convId, location) }
 
-  def setCurrentConvName(name: String): Future[Unit] = selectedConvId.head.map { id => setName(id, name) }
+  def setCurrentConvName(name: String): Future[Unit] = currentConvId.head.map { id => setName(id, name) }
   def setName(id: ConvId, name: String): Future[Unit] = for {
     z <- zms.head
     Some(conv) <- loadConv(id)
@@ -195,22 +224,24 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
 
   def removeMember(user: UserId): Future[Unit] = for {
     z <- zms.head
-    id <- selectedConvId.head
+    id <- currentConvId.head
   } yield z.convsUi.removeConversationMember(id, user)
 
   def leave(convId: ConvId): CancellableFuture[Option[ConversationData]] =
     returning (Serialized("Conversations", convId) { CancellableFuture.lift( zms.head.flatMap { _.convsUi.leaveConversation(convId) } ) } ) { _ =>
-      selectedConvId.head.map { id => if (id == convId) setCurrentConversationToNext(ConversationChangeRequester.LEAVE_CONVERSATION) }
+      verbose(s"CC leave($convId)")
+      currentConvId.head.map { id => if (id == convId) setCurrentConversationToNext(ConversationChangeRequester.LEAVE_CONVERSATION) }
     }
 
-  def nextConversation: Future[Option[ConvId]] = selectedConvId.head.map { id => convStore.nextConversation(id) }
-
   def setCurrentConversationToNext(requester: ConversationChangeRequester): Future[Unit] =
-    nextConversation.map { convId => selectConv(convId, requester)}
+    currentConvId.head.map { id => convStore.nextConversation(id) }.map { convId =>
+      verbose(s"CC setCurrentConversationToNext: $convId")
+      selectConv(convId, requester)
+    }
 
   def archive(convId: ConvId, archive: Boolean): Unit = {
     zms.head.map { _.convsUi.setConversationArchived(convId, archive) }
-    selectedConvId.head.map { id => if (id == convId) CancellableFuture.delayed(ConversationController.ARCHIVE_DELAY){
+    currentConvId.head.map { id => if (id == convId) CancellableFuture.delayed(ConversationController.ARCHIVE_DELAY){
       if (!archive) selectConv(convId, ConversationChangeRequester.CONVERSATION_LIST_UNARCHIVED_CONVERSATION)
       else setCurrentConversationToNext(ConversationChangeRequester.ARCHIVED_RESULT)
     }}
@@ -238,6 +269,9 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
 
   def knock(id: ConvId): Unit = zms(_.convsUi.knock(id))
 
+  def iConv(id: ConvId): IConversation = convStore.getConversation(id.str) // TODO: remove when not used anymore
+  def iCurrentConv: IConversation = currentConvId.currentValue.map(iConv).orNull
+
   object messages {
 
     val ActivityTimeout = 3.seconds
@@ -255,7 +289,7 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
       */
     val lastActive = Signal((MessageId.Empty, Instant.EPOCH)) // message showing status info
 
-    selectedConv.onChanged { c =>
+    currentConv.onChanged { c =>
       verbose(s"selected conv changed: $c")
       clear()
     }
@@ -288,12 +322,20 @@ object ConversationController {
   val ARCHIVE_DELAY = 500.millis
 
   case class ConversationChange(from: Option[ConvId], to: Option[ConvId], requester: ConversationChangeRequester) {
-    def fromConversation(): ConvId = from.orNull // TODO: remove when not used anymore
-    def toConversation(): ConvId = to.orNull // TODO: remove when not used anymore
+    def fromConvId(): ConvId = from.orNull // TODO: remove when not used anymore
+    def toConvId(): ConvId = to.orNull // TODO: remove when not used anymore
     lazy val noChange: Boolean = from == to
   }
 
   val emptyImageAsset: com.waz.api.ImageAsset = ImageAsset.Empty.asInstanceOf[com.waz.api.ImageAsset]
 
-  def getOtherParticipantForOneToOneConv(id: ConvId): UserId = UserId(id.str) // one-to-one conversation has the same id as the other user, so we can access it directly
+  def getOtherParticipantForOneToOneConv(conv: ConversationData): UserId = {
+    if (conv != ConversationData.Empty &&
+        conv.convType != IConversation.Type.ONE_TO_ONE &&
+        conv.convType != IConversation.Type.WAIT_FOR_CONNECTION &&
+        conv.convType != IConversation.Type.INCOMING_CONNECTION)
+      error(s"unexpected call, most likely UI error", new UnsupportedOperationException(s"Can't get other participant for: ${conv.convType} conversation"))
+    UserId(conv.id.str) // one-to-one conversation has the same id as the other user, so we can access it directly
+  }
+
 }

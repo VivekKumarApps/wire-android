@@ -34,13 +34,11 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.Interpolator;
 
-import com.waz.api.ConversationsList;
 import com.waz.api.IConversation;
 import com.waz.api.ImageAsset;
 import com.waz.api.Message;
 import com.waz.api.MessageContent;
 import com.waz.api.OtrClient;
-import com.waz.api.SyncState;
 import com.waz.api.User;
 import com.waz.model.ConvId;
 import com.waz.model.ConversationData;
@@ -65,7 +63,6 @@ import com.waz.zclient.core.api.scala.ModelObserver;
 import com.waz.zclient.core.controllers.tracking.events.media.SentPictureEvent;
 import com.waz.zclient.core.stores.connect.IConnectStore;
 import com.waz.zclient.core.stores.conversation.ConversationChangeRequester;
-import com.waz.zclient.core.stores.conversation.ConversationStoreObserver;
 import com.waz.zclient.pages.BaseFragment;
 import com.waz.zclient.pages.main.connect.ConnectRequestLoadMode;
 import com.waz.zclient.pages.main.connect.PendingConnectRequestManagerFragment;
@@ -92,10 +89,8 @@ import com.waz.zclient.utils.Callback;
 import com.waz.zclient.utils.LayoutSpec;
 import com.waz.zclient.utils.TrackingUtils;
 import com.waz.zclient.utils.ViewUtils;
-
 import com.waz.zclient.views.ConversationFragment;
 import timber.log.Timber;
-
 
 public class RootFragment extends BaseFragment<RootFragment.Container> implements
                                                                        SlidingPaneObserver,
@@ -226,11 +221,6 @@ public class RootFragment extends BaseFragment<RootFragment.Container> implement
 
         getControllerFactory().getConversationScreenController().addConversationControllerObservers(this);
         getControllerFactory().getNavigationController().addPagerControllerObserver(this);
-        /*if (!getControllerFactory().getConversationScreenController().isConversationStreamUiInitialized()) {
-            getStoreFactory().conversationStore().addConversationStoreObserverAndUpdate(this);
-        } else {
-            getStoreFactory().conversationStore().addConversationStoreObserver(this);
-        }*/
 
         inject(ConversationController.class).onConvChanged(new Callback<ConversationController.ConversationChange>() {
             @Override
@@ -286,11 +276,11 @@ public class RootFragment extends BaseFragment<RootFragment.Container> implement
     }
 
     private void onCurrentConversationHasChanged(final ConversationController.ConversationChange change) {
-        if (change.toConversation() == null) {
+        if (change.toConvId() == null) {
             return;
         }
 
-        IConversation iConv = getStoreFactory().conversationStore().getConversation(change.toConversation().str());
+        IConversation iConv = inject(ConversationController.class).iConv(change.toConvId());
         conversationModelObserver.setAndUpdate(iConv);
         getStoreFactory().participantsStore().setCurrentConversation(iConv);
 
@@ -312,14 +302,14 @@ public class RootFragment extends BaseFragment<RootFragment.Container> implement
                 switch (type) {
                     case WAIT_FOR_CONNECTION:
                         fragment = PendingConnectRequestManagerFragment.newInstance(null,
-                                                                                    change.toConversation().str(),
+                                                                                    change.toConvId().str(),
                                                                                     ConnectRequestLoadMode.LOAD_BY_CONVERSATION_ID,
                                                                                     IConnectStore.UserRequester.CONVERSATION);
                         tag = PendingConnectRequestManagerFragment.TAG;
                         page = Page.PENDING_CONNECT_REQUEST_AS_CONVERSATION;
                         break;
                     case INCOMING_CONNECTION:
-                        fragment = ConnectRequestFragment.newInstance(change.toConversation().str());
+                        fragment = ConnectRequestFragment.newInstance(change.toConvId().str());
                         tag = ConnectRequestFragment.FragmentTag();
                         page = Page.CONNECT_REQUEST_INBOX;
                         break;
@@ -476,7 +466,7 @@ public class RootFragment extends BaseFragment<RootFragment.Container> implement
         ctrl.sendMessage(imageAsset);
 
         // Tablet doesn't have keyboard camera interface
-        ctrl.withSelectedConv(new Callback<ConversationData>() {
+        ctrl.withCurrentConv(new Callback<ConversationData>() {
             @Override
             public void callback(ConversationData conv) {
                 TrackingUtils.onSentPhotoMessage(

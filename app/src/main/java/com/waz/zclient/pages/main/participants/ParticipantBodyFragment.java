@@ -69,6 +69,7 @@ import com.waz.zclient.utils.ViewUtils;
 import com.waz.zclient.views.images.ImageAssetImageView;
 import com.waz.zclient.views.menus.FooterMenu;
 import com.waz.zclient.views.menus.FooterMenuCallback;
+import timber.log.Timber;
 
 import java.util.Collection;
 
@@ -534,7 +535,7 @@ public class ParticipantBodyFragment extends BaseFragment<ParticipantBodyFragmen
         topBorder.setVisibility(View.INVISIBLE);
 
         //final IConversation conversation = getStoreFactory().conversationStore().getCurrentConversation();
-        inject(ConversationController.class).withSelectedConv(new Callback<ConversationData>() {
+        inject(ConversationController.class).withCurrentConv(new Callback<ConversationData>() {
             @Override
             public void callback(final ConversationData conversationData) {
                 if (conversationData.convType() == IConversation.Type.ONE_TO_ONE) {
@@ -633,6 +634,7 @@ public class ParticipantBodyFragment extends BaseFragment<ParticipantBodyFragmen
     }
 
     private void showLeaveConfirmation(final ConvId convId) {
+        Timber.d("CC showLeaveConfirmation " + convId.str());
         final ConversationController conversationController = inject(ConversationController.class);
         ConfirmationCallback callback = new TwoButtonConfirmationCallback() {
             @Override
@@ -649,6 +651,8 @@ public class ParticipantBodyFragment extends BaseFragment<ParticipantBodyFragmen
                         inject(GlobalTrackingController.class).tagEvent(new LeaveGroupConversationEvent(true, members.size()));
                     }
                 });
+
+                Timber.d("CC leaving " + convId.str());
 
                 conversationController.leave(convId);
                 if (LayoutSpec.isTablet(getActivity())) {

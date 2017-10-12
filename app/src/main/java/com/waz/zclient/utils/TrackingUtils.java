@@ -210,14 +210,6 @@ public class TrackingUtils {
                                                               conversation));
     }
 
-    public static void onSentTextMessage(GlobalTrackingController trackingController, IConversation conversation) {
-        trackingController.tagEvent(new CompletedMediaActionEvent(CompletedMediaType.TEXT,
-                                                                  conversation.getType().name(),
-                                                                  conversation.isOtto(),
-                                                                  conversation.isEphemeral(),
-                                                                  String.valueOf(conversation.getEphemeralExpiration().duration().toSeconds())));
-    }
-
     public static void onSentTextMessage(GlobalTrackingController trackingController, ConversationData conversation, boolean isOtto) {
         trackingController.tagEvent(new CompletedMediaActionEvent(CompletedMediaType.TEXT,
                                                                   conversation.convType().name(),
@@ -291,42 +283,6 @@ public class TrackingUtils {
             false,
             conversation.ephemeral() != EphemeralExpiration.NONE,
             String.valueOf(conversation.ephemeral().duration().toSeconds())));
-    }
-
-    public static void onSentPhotoMessage(GlobalTrackingController trackingController,
-                                          IConversation conversation,
-                                          SentPictureEvent.Source source,
-                                          SentPictureEvent.Method method) {
-        trackingController.tagEvent(new SentPictureEvent(source,
-                                                         conversation.getType().name(),
-                                                         method,
-                                                         SentPictureEvent.SketchSource.NONE,
-                                                         conversation.isOtto(),
-                                                         conversation.isEphemeral(),
-                                                         String.valueOf(conversation.getEphemeralExpiration().duration().toSeconds())));
-    }
-
-
-    public static void onSentPhotoMessage(GlobalTrackingController trackingController,
-                                          IConversation conversation,
-                                          ImagePreviewLayout.Source source) {
-        SentPictureEvent.Source eventSource = source == ImagePreviewLayout.Source.CAMERA ?
-                                              SentPictureEvent.Source.CAMERA :
-                                              SentPictureEvent.Source.GALLERY;
-        SentPictureEvent.Method eventMethod = SentPictureEvent.Method.DEFAULT;
-        switch (source) {
-            case CAMERA:
-            case IN_APP_GALLERY:
-                eventMethod = SentPictureEvent.Method.KEYBOARD;
-                break;
-            case DEVICE_GALLERY:
-                eventMethod = SentPictureEvent.Method.FULL_SCREEN;
-                break;
-        }
-        onSentPhotoMessage(trackingController,
-                           conversation,
-                           eventSource,
-                           eventMethod);
     }
 
     public static void onSentPingMessage(GlobalTrackingController trackingController, ConversationData conv, boolean isOtto) {

@@ -48,7 +48,6 @@ import com.waz.api.LoadHandle;
 import com.waz.api.MemoryImageCache;
 import com.waz.model.ConversationData;
 import com.waz.utils.wrappers.URI;
-import com.waz.zclient.BaseActivity;
 import com.waz.zclient.OnBackPressedListener;
 import com.waz.zclient.R;
 import com.waz.zclient.controllers.accentcolor.AccentColorObserver;
@@ -250,7 +249,7 @@ public class DrawingFragment extends BaseFragment<DrawingFragment.Container> imp
 //        colorPickerScrollBar.setScrollBarColor(getControllerFactory().getAccentColorController().getColor());
 
         final TypefaceTextView conversationTitle = ViewUtils.getView(rootView, R.id.tv__drawing_toolbar__title);
-        inject(ConversationController.class).withSelectedConv(new Callback<ConversationData>() {
+        inject(ConversationController.class).withCurrentConv(new Callback<ConversationData>() {
             @Override
             public void callback(ConversationData conversationData) {
                 conversationTitle.setText(conversationData.displayName().toUpperCase(Locale.getDefault()));
@@ -546,7 +545,7 @@ public class DrawingFragment extends BaseFragment<DrawingFragment.Container> imp
                     if (!drawingCanvasView.isEmpty()) {
                         ConversationController conversationController = inject(ConversationController.class);
                         conversationController.sendMessage(getFinalSketchImage());
-                        conversationController.withSelectedConv(new Callback<ConversationData>() {
+                        conversationController.withCurrentConv(new Callback<ConversationData>() {
                             @Override
                             public void callback(ConversationData conversationData) {
                                 TrackingUtils.onSentSketchMessage(

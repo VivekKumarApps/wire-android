@@ -48,7 +48,6 @@ import android.view.animation.AnimationUtils;
 
 import java.lang.reflect.Field;
 
-import static android.R.attr.width;
 
 public class ViewUtils {
 
@@ -463,6 +462,5 @@ public class ViewUtils {
             return DEFAULT_CHILD_ANIMATION_DURATION;
         }
     }
-
 
 }

@@ -46,7 +46,7 @@ class SearchAdapter()(implicit context: Context, injector: Injector, eventContex
 
   val cursor = for {
     zs <- zms
-    convId <- inject[ConversationController].selectedConvId
+    convId <- inject[ConversationController].currentConvId
     query <- contentSearchQuery
   } yield
     new RecyclerCursor(convId, zs, notifier, messageFilter = Some(MessageFilter(None, Some(query))))

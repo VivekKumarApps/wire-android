@@ -58,6 +58,7 @@ import com.waz.zclient.tracking.GlobalTrackingController;
 import com.waz.zclient.ui.views.tab.TabIndicatorLayout;
 import com.waz.zclient.utils.ViewUtils;
 import com.waz.zclient.views.menus.FooterMenuCallback;
+import timber.log.Timber;
 
 public class TabbedParticipantBodyFragment extends BaseFragment<TabbedParticipantBodyFragment.Container> implements
                                                                                                ParticipantsStoreObserver,
@@ -240,12 +241,13 @@ public class TabbedParticipantBodyFragment extends BaseFragment<TabbedParticipan
         if (viewPager == null) {
             return;
         }
+
         View view = viewPager.findViewWithTag(TabbedParticipantPagerAdapter.ParticipantTabs.DETAILS);
         if (view instanceof ParticipantDetailsTab) {
             final ParticipantDetailsTab tab = (ParticipantDetailsTab) view;
             tab.setUser(user);
 
-            inject(ConversationController.class).withSelectedConv(new Callback<ConversationData>() {
+            inject(ConversationController.class).withCurrentConv(new Callback<ConversationData>() {
                 @Override
                 public void callback(ConversationData conv) {
                     if (conv.convType() == IConversation.Type.ONE_TO_ONE && permissionToCreate) {
@@ -275,7 +277,7 @@ public class TabbedParticipantBodyFragment extends BaseFragment<TabbedParticipan
     private void updateUser() {
         ConversationController ctrl = inject(ConversationController.class);
 
-        ctrl.withSelectedConv(new Callback<ConversationData>() {
+        ctrl.withCurrentConv(new Callback<ConversationData>() {
             @Override
             public void callback(ConversationData conv) {
                 permissionToRemove = inject(UserAccountsController.class).hasRemoveConversationMemberPermission(conv.id());
@@ -283,7 +285,7 @@ public class TabbedParticipantBodyFragment extends BaseFragment<TabbedParticipan
 
                 final User updatedUser;
                 if (conv.convType() == IConversation.Type.ONE_TO_ONE) {
-                    UserId id = ConversationController.getOtherParticipantForOneToOneConv(conv.id());
+                    UserId id = ConversationController.getOtherParticipantForOneToOneConv(conv);
                     updatedUser = getStoreFactory().zMessagingApiStore().getApi().getUser(id.str());
                 } else {
                     updatedUser = getStoreFactory().singleParticipantStore().getUser();
@@ -418,7 +420,9 @@ public class TabbedParticipantBodyFragment extends BaseFragment<TabbedParticipan
                 return;
             }
 
-            inject(ConversationController.class).withSelectedConv(new Callback<ConversationData>() {
+            Timber.d("CC onLeftActionClicked");
+
+            inject(ConversationController.class).withCurrentConv(new Callback<ConversationData>() {
                 @Override
                 public void callback(ConversationData conv) {
                     if (conv.convType() == IConversation.Type.ONE_TO_ONE && permissionToCreate) {
@@ -443,7 +447,9 @@ public class TabbedParticipantBodyFragment extends BaseFragment<TabbedParticipan
                 return;
             }
 
-            inject(ConversationController.class).withSelectedConv(new Callback<ConversationData>() {
+            Timber.d("CC onRightActionClicked");
+
+            inject(ConversationController.class).withCurrentConv(new Callback<ConversationData>() {
                 @Override
                 public void callback(ConversationData conv) {
                     if (conv.convType() == IConversation.Type.ONE_TO_ONE) {

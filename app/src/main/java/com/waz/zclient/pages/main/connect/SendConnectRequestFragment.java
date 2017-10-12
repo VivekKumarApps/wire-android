@@ -27,7 +27,6 @@ import android.view.animation.Animation;
 import android.widget.TextView;
 import com.waz.api.IConversation;
 import com.waz.api.User;
-import com.waz.model.ConvId;
 import com.waz.zclient.BaseActivity;
 import com.waz.zclient.R;
 import com.waz.zclient.common.views.UserDetailsView;
@@ -271,8 +270,8 @@ public class SendConnectRequestFragment extends BaseFragment<SendConnectRequestF
             }
         });
 
-        final Boolean permissionToRemove = ((BaseActivity) getActivity()).injectJava(UserAccountsController.class).hasRemoveConversationMemberPermission(
-            inject(ConversationController.class).getSelectedConvId()
+        final Boolean permissionToRemove = inject(UserAccountsController.class).hasRemoveConversationMemberPermission(
+            inject(ConversationController.class).getCurrentConvId()
         );
 
         if (userRequester == IConnectStore.UserRequester.PARTICIPANTS && permissionToRemove) {

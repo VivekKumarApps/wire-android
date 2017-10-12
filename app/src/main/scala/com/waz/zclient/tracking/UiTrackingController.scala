@@ -41,6 +41,8 @@ import com.waz.zclient.{Injectable, Injector}
 import org.threeten.bp.Duration
 
 import scala.concurrent.Future
+import com.waz.ZLog._
+import com.waz.ZLog.ImplicitTag._
 
 class UiTrackingController(implicit injector: Injector, ctx: Context, ec: EventContext) extends Injectable {
   import GlobalTrackingController._
@@ -62,7 +64,7 @@ class UiTrackingController(implicit injector: Injector, ctx: Context, ec: EventC
   val zms                   = inject[Signal[ZMessaging]]
   val convInfo = for {
     z <- zms
-    Some(c) <- inject[ConversationController].selectedConv
+    Some(c) <- inject[ConversationController].currentConv
     user <- z.usersStorage.signal(c.creator)
   } yield {
     (c, c.convType == ConversationType.OneToOne && user.isWireBot)
@@ -199,6 +201,7 @@ class UiTrackingController(implicit injector: Injector, ctx: Context, ec: EventC
   withConv(cursorController.extendedCursor.onChanged).on(Threading.Ui) {
     case (NONE, _, _) =>
     case (VOICE_FILTER_RECORDING, conv, otto) =>
+      verbose(s"CC voice filer recording cursor action tag")
       tagEvent(OpenedMediaActionEvent.cursorAction(OpenedMediaAction.AUDIO_MESSAGE, conv, otto))
     case (IMAGES, conv, otto) =>
       tagEvent(OpenedMediaActionEvent.cursorAction(OpenedMediaAction.PHOTO, conv, otto))
