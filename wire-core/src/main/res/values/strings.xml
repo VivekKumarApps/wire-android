@@ -720,6 +720,7 @@
     <string name="notification__message__single__accept_request">You and %1$s are now connected</string>
     <string name="notification__message__group__default_conversation_name">group conversation</string>
     <string name="notification__message__group__liked">\u2764 your message</string>
+    <string name="notification__message__send_failed">Message failed to send</string>
 
     <!-- ephemeral -->
     <string name="notification__message__ephemeral_details">Press for more</string>

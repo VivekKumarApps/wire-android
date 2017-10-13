@@ -34,11 +34,11 @@ import com.waz.ZLog.verbose
 import com.waz.api.NotificationsHandler.NotificationType
 import com.waz.api.NotificationsHandler.NotificationType._
 import com.waz.bitmap
-import com.waz.model.AccountId
+import com.waz.model.{AccountId, ConvId}
 import com.waz.service.ZMessaging
 import com.waz.service.push.NotificationService.NotificationInfo
 import com.waz.threading.Threading
-import com.waz.utils.events.{EventContext, EventStreamWithAuxSignal, Signal}
+import com.waz.utils.events.{EventContext, Signal}
 import com.waz.zclient.Intents._
 import com.waz.zclient._
 import com.waz.zclient.controllers.navigation.Page
@@ -56,6 +56,7 @@ class MessageNotificationsController(implicit inj: Injector, cxt: Context, event
   def context = cxt
   implicit val ec = Threading.Background
 
+  val zms = inject[Signal[ZMessaging]]
   val notManager = inject[NotificationManager]
   val sharedPreferences = cxt.getSharedPreferences(UserPreferencesController.USER_PREFS_TAG, Context.MODE_PRIVATE)
   lazy val soundController = inject[SoundController]
@@ -64,16 +65,39 @@ class MessageNotificationsController(implicit inj: Injector, cxt: Context, event
   val currentAccount = ZMessaging.currentAccounts.activeAccount
 
   Signal.future(ZMessaging.globalModule).flatMap(_.notifications.groupedNotifications).onUi { _.foreach {
-    case (account, (shouldBeSilent, nots)) => handleNotifications(account, shouldBeSilent, nots)
+    case (account, (shouldBeSilent, nots)) if nots.exists(!_.hasBeenDisplayed) => handleNotifications(account, shouldBeSilent, nots)
+    case _ =>
   }}
 
-  (for {
-    gl   <- Signal.future(ZMessaging.globalModule)
+  val conversationsBeingDisplayed = for {
+    gl <- Signal.future(ZMessaging.globalModule)
+    accounts <- ZMessaging.currentAccounts.loggedInAccounts
+    zms <- zms
+    uiActive <- gl.lifecycle.uiActive
+    selectedConversation <- zms.convsStats.selectedConversationId
+    conversationsSet <- zms.convsStorage.convsSignal
     page <- navigationController.visiblePage
-  } yield (gl, page)) {
-    case (gl, page) =>
-      gl.notifications.messageStreamVisible ! (page == Page.MESSAGE_STREAM)
-      gl.notifications.conversationListVisible ! (page == Page.CONVERSATION_LIST)
+  } yield (gl, accounts.map { acc =>
+    val convs =
+      if (zms.accountId != acc.id || !uiActive) {
+        Set[ConvId]()
+      } else {
+        page match {
+          case Page.CONVERSATION_LIST =>
+            conversationsSet.conversations.map(_.id)
+          case Page.MESSAGE_STREAM =>
+            selectedConversation.fold(Set[ConvId]())(Set(_))
+          case _ =>
+            Set[ConvId]()
+        }
+      }
+    acc.id -> convs
+  }.toMap)
+
+  conversationsBeingDisplayed {
+    case (gl, convs) =>
+      verbose(s"conversationsBeingDisplayed: $convs")
+      gl.notifications.notificationsSourceVisible ! convs
   }
 
   private def handleNotifications(account: AccountId, silent: Boolean, nots: Seq[NotificationInfo]): Unit = {
@@ -278,6 +302,7 @@ class MessageNotificationsController(implicit inj: Injector, cxt: Context, event
       case MEMBER_JOIN              => getString(R.string.notification__message__group__add)
       case LIKE                     => getString(R.string.notification__message__group__liked)
       case CONNECT_ACCEPTED         => if (multiple || n.userName.isEmpty) getString(R.string.notification__message__generic__accept_request)    else getString(R.string.notification__message__single__accept_request, n.userName.getOrElse(""))
+      case MESSAGE_SENDING_FAILED   => getString(R.string.notification__message__send_failed)
       case _ => ""
     }
     getMessageSpannable(header, body)
